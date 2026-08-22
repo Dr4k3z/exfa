@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exfa"
+version = "0.1.0"
+description = "Extended Factors: A general porpouse factor modelling framework"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dotenv>=0.9.9",
+    "lseg-data>=2.1.0",
+    "matplotlib>=3.11.0",
+    "numpy>=2.5.0",
+    "pandas>=3.0.3",
+    "polars>=1.42.0",
+    "psycopg>=3.3.4",
+    "pyarrow>=25.0.1",
+    "scikit-learn>=1.9.0",
+    "sqlalchemy>=2.0.51",
+    "statsmodels>=0.14.6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+    "ty>=0.0.32",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 95
+target-version = "py314"
+
+[tool.ruff.lint]
+extend-select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ty.environment]
+python = ".venv"
+
+[tool.ty.rules]
+all = "error"
