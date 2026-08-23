@@ -1,5 +1,24 @@
 # ExFa
 
+## TODO:
+1. Separate the Regression and Diagnostic logic from the `RiskFactorModel` class and make independent modules
+2. Define a proper way to combine factors together, e.g.
+
+    ```
+    data["MOMENTUM"] = (
+        0.5 * data["mom_12m_1m_z"]
+        + 0.5 * data["mom_6m_1m_z"]
+    )
+
+    data["SHORT_TERM"] = data["mom_1m_z"]
+    ```
+
+    For this it could be helpful to move to Polars (see point 4)
+
+3. Abstraction `DataProvider` layer that can support different data sources and standardizes the way data is fetched, manipulated and merged.
+4. Move to Polars, possibly using `pl.Expr` for the factors computation
+5. Fix `RuntimeWarning: invalid value encountered in scalar divide`
+
 ## LSEG ingestion
 
 `LsegDataProvider` is an extraction client for scheduled ingestion jobs. It
