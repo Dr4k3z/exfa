@@ -4,7 +4,7 @@ from typing import override
 
 import pandas as pd
 
-from .clean import clean_factor
+from .preprocessing import clean_factor
 
 
 class Factor(ABC):
@@ -18,15 +18,15 @@ class Factor(ABC):
 
     @property
     @abstractmethod
-    def required_features(self) -> Sequence[str]:
-        """Columns required to compute the raw exposure."""
-        ...
+    def required_features(self) -> Sequence[str]: ...
 
     @property
     @abstractmethod
-    def requires_constraint(self) -> bool:
-        """In the regression"""
-        ...
+    def requires_constraint(self) -> bool: ...
+
+    @property
+    def include_in_vif(self) -> bool:
+        return False
 
     def validate_data(self, data: pd.DataFrame) -> None:
         missing = [feature for feature in self.required_features if feature not in data.columns]
@@ -45,7 +45,7 @@ class Factor(ABC):
             raise ValueError(f"Factor data is missing index levels: {sorted(missing_levels)}")
 
     @abstractmethod
-    def compute(self, data: pd.DataFrame) -> pd.Series | pd.DataFrame: ...
+    def compute(self, data: pd.DataFrame) -> pd.DataFrame: ...
 
     @override
     def __repr__(self) -> str:
@@ -64,13 +64,18 @@ class ContinuousFactor(Factor):
     def requires_constraint(self) -> bool:
         return False
 
+    @property
     @override
-    def compute(self, data: pd.DataFrame, clean: bool = True) -> pd.Series:
+    def include_in_vif(self) -> bool:
+        return True
+
+    @override
+    def compute(self, data: pd.DataFrame, clean: bool = True) -> pd.DataFrame:
         self.validate_data(data)
         exposure = self._compute(data)
         if clean:
             exposure = clean_factor(exposure, self.impute, self.winsorize, self.standardize)
-        return exposure.rename(self.name)
+        return exposure.rename(self.name).to_frame()
 
 
 class CategoricalFactor(Factor):
@@ -90,40 +95,3 @@ class CategoricalFactor(Factor):
         self.validate_data(data)
         exposure = self._compute(data)
         return exposure
-
-
-"""
-class Factor(ABC):
-    def __init__(self, name: str, kind: FactorKind) -> None:
-        self.name = name
-        self.kind = kind
-
-    @property
-    @abstractmethod
-    def required_features(self) -> Sequence[str]: ...
-
-    @property
-    def requires_fit(self) -> bool:
-        return False
-
-    def validate_data(self, data: pl.LazyFrame) -> None:
-        Validate that required raw features are available
-        schema = data.collect_schema()
-        missing = [feature for feature in self.required_features if feature not in schema]
-
-        if missing:
-            raise ValueError(f"Factor {self.name!r} requires missing features: {missing}")
-
-    def fit(self, data: pl.LazyFrame) -> None:
-        if self.requires_fit:
-            raise NotImplementedError(
-                f"{type(self).__name__} requires fitting but does not implement fit()."
-            )
-
-    @abstractmethod
-    def compute(self, data: pl.LazyFrame) -> Sequence[FactorExposure]: ...
-
-    @override
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}(name={self.name!r}, kind={self.kind.name})"
-"""

@@ -1,8 +1,7 @@
 # ExFa
 
 ## TODO:
-1. Separate the Regression and Diagnostic logic from the `RiskFactorModel` class and make independent modules
-2. Define a proper way to combine factors together, e.g.
+- Define a proper way to combine factors together, e.g.
 
     ```
     data["MOMENTUM"] = (
@@ -15,9 +14,19 @@
 
     For this it could be helpful to move to Polars (see point 4)
 
-3. Abstraction `DataProvider` layer that can support different data sources and standardizes the way data is fetched, manipulated and merged.
-4. Move to Polars, possibly using `pl.Expr` for the factors computation
-5. Fix `RuntimeWarning: invalid value encountered in scalar divide`
+- Abstraction `DataProvider` layer that can support different data sources and standardizes the way data is fetched, manipulated and merged.
+
+- Move to Polars, possibly using `pl.Expr` for the factors computation
+
+- Support for Statical factors (PCA)
+
+- Factor pushout
+
+- Risk Variance Decomposition
+
+- Make it faster (moving to Polars might help)
+
+- Make it more stable over time (fitting a proper model may help)
 
 ## LSEG ingestion
 

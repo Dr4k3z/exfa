@@ -1,9 +1,10 @@
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from exfa.core import RiskFactorModel
+from exfa import RiskFactorModel
 from exfa.factors import CountryFactor, InterceptFactor, MomentumFactor, SectorFactor
 
 
@@ -56,13 +57,9 @@ if __name__ == "__main__":
         ]
     )
 
-    exposures = rfm.compute_exposures(mkt_df).exposures
-
-    return_dates = returns.dropna().index.get_level_values("date")
-    exposure_dates = exposures.index.get_level_values("date")
-    valid_dates = exposure_dates.unique().intersection(return_dates.unique())
-
-    if valid_dates.empty:
-        raise ValueError("No dates have both factor exposures and valid returns.")
-
     result = rfm.fit(mkt_df, returns)
+
+    print(result.vif.describe())
+
+    result.diagnostics["r2"].plot()
+    plt.show()
