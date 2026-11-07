@@ -88,7 +88,9 @@ class RiskFactorDiagnostics:
             population_covariance, "fro"
         )
         operator_error = np.linalg.norm(delta, ord=2)
-        trace_term = np.trace(np.linalg.solve(self._estimated_covariance, population_covariance))
+        trace_term = np.trace(
+            np.linalg.solve(self._estimated_covariance, population_covariance)
+        )
 
         try:
             population_cholesky = np.linalg.cholesky(population_covariance)
@@ -104,19 +106,21 @@ class RiskFactorDiagnostics:
             "stein_loss": float(stein),
         }
 
-    def oos_gaussian_nll(self, R_test: np.ndarray) -> float:
+    def oos_gaussian_nll(self, test_returns: np.ndarray) -> float:
         """
         Mean negative Gaussian log-likelihood, assuming zero-mean returns.
         """
 
-        whitened = np.linalg.solve(self.cholesky_factor, R_test)
+        whitened = np.linalg.solve(self.cholesky_factor, test_returns)
         mahalanobis_mean = np.mean(np.sum(whitened**2, axis=0))
 
-        return float(0.5 * (self.num_assets * np.log(2 * np.pi) + self.logdet + mahalanobis_mean))
+        return float(
+            0.5 * (self.num_assets * np.log(2 * np.pi) + self.logdet + mahalanobis_mean)
+        )
 
     def portfolio_risk(
         self,
-        R_test: np.ndarray,
+        test_returns: np.ndarray,
         portfolios: dict[str, np.ndarray] | None = None,
     ) -> dict[str, PortfolioRisk]:
         """
@@ -136,7 +140,7 @@ class RiskFactorDiagnostics:
             if pred <= 0:
                 raise ValueError(f"Portfolio {name!r} must have positive predicted variance")
 
-            observed = float(np.mean((w @ R_test) ** 2))
+            observed = float(np.mean((w @ test_returns) ** 2))
 
             output[name] = PortfolioRisk(
                 predicted_variance=pred,
@@ -161,43 +165,43 @@ class RiskFactorDiagnostics:
 
     def reconstruct(
         self,
-        R: np.ndarray,
+        returns: np.ndarray,
         factor_returns: np.ndarray | None = None,
     ) -> np.ndarray:
         """
-        Return residuals R-BF, using least-squares factors when F is absent.
+        Return residuals returns-BF, using least-squares factors when F is absent.
         """
 
         if factor_returns is None:
-            factor_returns = np.linalg.lstsq(self._loadings, R, rcond=None)[0]
+            factor_returns = np.linalg.lstsq(self._loadings, returns, rcond=None)[0]
 
-        return R - self._loadings @ factor_returns
+        return returns - self._loadings @ factor_returns
 
     def explanatory_power(
         self,
-        R: np.ndarray,
+        returns: np.ndarray,
         factor_returns: np.ndarray | None = None,
     ) -> dict[str, float]:
         """
         Reconstruction quality for centered returns.
         """
 
-        E = self.reconstruct(R, factor_returns)
-        total = float(np.sum(R**2))
+        E = self.reconstruct(returns, factor_returns)
+        total = float(np.sum(returns**2))
 
         if total == 0:
-            raise ValueError("R must have positive total sum of squares")
+            raise ValueError("returns must have positive total sum of squares")
 
         squared_error = float(np.sum(E**2))
 
         return {
             "r2": 1.0 - squared_error / total,
-            "mean_squared_residual": squared_error / R.size,
+            "mean_squared_residual": squared_error / returns.size,
         }
 
     def residual_structure(
         self,
-        R: np.ndarray,
+        returns: np.ndarray,
         *,
         factor_returns: np.ndarray | None = None,
         max_assets: int = 200,
@@ -207,7 +211,7 @@ class RiskFactorDiagnostics:
         Assess residual correlation, variance dispersion, and serial dependence.
         """
 
-        E = self.reconstruct(R, factor_returns)
+        E = self.reconstruct(returns, factor_returns)
         n, T = E.shape
 
         if T < 3 or max_assets < 2:
@@ -271,12 +275,12 @@ class RiskFactorDiagnostics:
 
         norms = np.linalg.norm(X, axis=0)
         if np.any(norms == 0):
-            raise ValueError("Factor exposure has zero variation")
+            raise ValueError("Factor loadings has zero variation")
 
         X = X / norms
         m = X.shape[1]
 
         if np.linalg.matrix_rank(X) < m:
-            raise ValueError("Factor exposures are linearly dependent")
+            raise ValueError("Factor loadings are linearly dependent")
 
         return np.diag(np.linalg.solve(X.T @ X, np.eye(m)))

@@ -26,6 +26,7 @@ def pull_timeseries_data(
     Pull all currently supported time-series datasets required by
     the risk-factor model.
     """
+
     market_data = lseg.get_prices(
         assets=assets,
         start_date=start_date,

@@ -29,7 +29,9 @@ class Factor(ABC):
         return False
 
     def validate_data(self, data: pd.DataFrame) -> None:
-        missing = [feature for feature in self.required_features if feature not in data.columns]
+        missing = [
+            feature for feature in self.required_features if feature not in data.columns
+        ]
 
         if missing:
             raise ValueError(f"{type(self).__name__} requires missing features: {missing}")
@@ -72,10 +74,10 @@ class ContinuousFactor(Factor):
     @override
     def compute(self, data: pd.DataFrame, clean: bool = True) -> pd.DataFrame:
         self.validate_data(data)
-        exposure = self._compute(data)
+        loadings = self._compute(data)
         if clean:
-            exposure = clean_factor(exposure, self.impute, self.winsorize, self.standardize)
-        return exposure.rename(self.name).to_frame()
+            loadings = clean_factor(loadings, self.impute, self.winsorize, self.standardize)
+        return loadings.rename(self.name).to_frame()
 
 
 class CategoricalFactor(Factor):
@@ -93,5 +95,5 @@ class CategoricalFactor(Factor):
     @override
     def compute(self, data: pd.DataFrame) -> pd.DataFrame:
         self.validate_data(data)
-        exposure = self._compute(data)
-        return exposure
+        loadings = self._compute(data)
+        return loadings

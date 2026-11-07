@@ -15,15 +15,21 @@ from lseg.data.session import Session
 
 
 class LsegProviderError(RuntimeError):
-    """Base error raised by the LSEG ingestion client."""
+    """
+    Base error raised by the LSEG ingestion client.
+    """
 
 
 class LsegSessionError(LsegProviderError):
-    """Raised when an extraction is attempted without an open session."""
+    """
+    Raised when an extraction is attempted without an open session.
+    """
 
 
 class LsegSchemaError(LsegProviderError):
-    """Raised when LSEG returns data that violates the provider contract."""
+    """
+    Raised when LSEG returns data that violates the provider contract.
+    """
 
 
 class PriceField(StrEnum):
@@ -71,7 +77,8 @@ class LsegConfig:
 
 
 class LsegDataProvider:
-    """LSEG ingestion client with a stable time-series contract.
+    """
+    LSEG ingestion client with a stable time-series contract.
 
     Historical methods return a sorted, unique ``(date, asset)`` MultiIndex.
     Static/reference methods return ordinary tabular dataframes.
@@ -117,7 +124,10 @@ class LsegDataProvider:
         fields: str | Sequence[str],
         parameters: str | dict[str, Any] | None = None,
     ) -> pd.DataFrame:
-        """Call LSEG's generic endpoint without changing its output."""
+        """
+        Call LSEG's generic endpoint without changing its output.
+        """
+
         _ = self.session
         requested = [fields] if isinstance(fields, str) else list(fields)
         return ld.get_data(
@@ -125,7 +135,10 @@ class LsegDataProvider:
         )
 
     def get_trbc(self, assets: str | Sequence[str]) -> pd.DataFrame:
-        """Return static country and TRBC classifications, one row per asset."""
+        """
+        Return static country and TRBC classifications, one row per asset.
+        """
+
         frame = self.get_data(
             assets,
             [
@@ -147,7 +160,10 @@ class LsegDataProvider:
         end_date: Date,
         fields: Sequence[PriceField | str] = DEFAULT_PRICE_FIELDS,
     ) -> pd.DataFrame:
-        """Return historical pricing indexed by ``(date, asset)``."""
+        """
+        Return historical pricing indexed by ``(date, asset)``.
+        """
+
         _ = self.session
         universe = _assets(assets)
         _date_range(start_date, end_date)
@@ -178,7 +194,10 @@ class LsegDataProvider:
         frequency: str = "D",
         currency: str | None = None,
     ) -> pd.DataFrame:
-        """Fetch one TR value/date pair as a raw observed time series."""
+        """
+        Fetch one TR value/date pair as a raw observed time series.
+        """
+
         _date_range(start_date, end_date)
         parameters: dict[str, Any] = {
             "SDate": start_date.isoformat(),
@@ -205,11 +224,13 @@ class LsegDataProvider:
         frequency: str = "D",
         currency: str | None = None,
     ) -> pd.DataFrame:
-        """Fetch fields independently and outer-join their observation dates.
+        """
+        Fetch fields independently and outer-join their observation dates.
 
         A mapping supplies ``LSEG field -> output column`` names. A sequence
         derives output names from the LSEG field identifiers.
         """
+
         items: list[tuple[str, str]]
         if isinstance(fields, Mapping):
             items = [(str(field), str(name)) for field, name in fields.items()]

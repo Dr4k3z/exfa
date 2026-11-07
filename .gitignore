@@ -221,4 +221,5 @@ __marimo__/
 
 # custom - never push notebooks
 data/lseg/
-*.ipynb 
+*.ipynb
+test/

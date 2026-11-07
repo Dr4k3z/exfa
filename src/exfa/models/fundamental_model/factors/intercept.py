@@ -3,7 +3,7 @@ from typing import override
 
 import pandas as pd
 
-from exfa.factors.base import ContinuousFactor
+from exfa.models.fundamental_model.factors.base import ContinuousFactor
 
 
 class InterceptFactor(ContinuousFactor):

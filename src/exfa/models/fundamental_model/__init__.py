@@ -1,3 +1,3 @@
-from .rfm import RiskFactorModel as FundamentalFactorModel
+from .fundamental_rfm import FundamentalFactorModel
 
 __all__ = ["FundamentalFactorModel"]

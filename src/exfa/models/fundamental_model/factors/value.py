@@ -3,14 +3,14 @@ from typing import override
 
 import pandas as pd
 
-from exfa.factors.base import ContinuousFactor
+from exfa.models.fundamental_model.factors.base import ContinuousFactor
 
 
-class SizeFactor(ContinuousFactor):
+class ValueFactor(ContinuousFactor):
     def __init__(
         self,
         name: str,
-        size_col: str = "volume",
+        size_col: str = "market_cap",
         impute: bool = True,
         winsorize: bool = True,
         standardize: bool = True,

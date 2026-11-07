@@ -3,7 +3,7 @@ from typing import override
 
 import pandas as pd
 
-from exfa.factors.base import CategoricalFactor
+from exfa.models.fundamental_model.factors.base import CategoricalFactor
 
 
 class CountryFactor(CategoricalFactor):

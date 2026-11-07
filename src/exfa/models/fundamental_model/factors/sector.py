@@ -3,12 +3,12 @@ from typing import override
 
 import pandas as pd
 
-from exfa.factors.base import CategoricalFactor
+from exfa.models.fundamental_model.factors.base import CategoricalFactor
 
 
 class SectorFactor(CategoricalFactor):
     """
-    Categorical sector factor represented by one-hot asset exposures.
+    Categorical sector factor represented by one-hot asset loadings.
     """
 
     def __init__(self, sector_col: str = "sector"):

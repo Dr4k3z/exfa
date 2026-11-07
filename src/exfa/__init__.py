@@ -1,5 +1,4 @@
-from .core import RiskFactorModel
-from .models import FundamentalFactorModel, StatisticalFactorModel
+from .models import FundamentalFactorModel, RiskFactorModel, StatisticalFactorModel
 from .provider.lseg_provider import LsegConfig, LsegDataProvider, PriceField
 
 __all__ = [

@@ -1,11 +1,16 @@
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from exfa import RiskFactorModel
-from exfa.factors import CountryFactor, InterceptFactor, MomentumFactor, SectorFactor
+from exfa import FundamentalFactorModel
+from exfa.diagnostics import RiskFactorDiagnostics
+from exfa.models.fundamental_model.factors import (
+    CountryFactor,
+    InterceptFactor,
+    MomentumFactor,
+    SectorFactor,
+)
 
 
 def read_data_from_parquet(
@@ -40,26 +45,51 @@ if __name__ == "__main__":
 
     returns = mkt_df["price"].groupby(level="asset").transform(lambda x: np.log(x).diff())
 
-    rfm = RiskFactorModel(
+    factors = [
+        MomentumFactor(
+            name="mom_21d", window=21, impute=True, winsorize=True, standardize=True
+        ),
+        MomentumFactor(
+            name="mom_126d", window=126, impute=True, winsorize=True, standardize=True
+        ),
+        MomentumFactor(
+            name="mom_252d", window=252, impute=True, winsorize=True, standardize=True
+        ),
+        CountryFactor(column="country"),
+        SectorFactor(sector_col="industry"),
+        InterceptFactor(),
+    ]
+    # Factor construction uses labeled data; model estimation uses NumPy only.
+    blocks = [factor.compute(mkt_df) for factor in factors]
+    loadings_panel = pd.concat(blocks, axis=1)
+    if loadings_panel.columns.has_duplicates:
+        raise ValueError("Factor loading names must be unique")
+    return_panel = returns.unstack("date").sort_index().sort_index(axis=1)
+    assets, dates = return_panel.index, return_panel.columns
+    loadings = np.stack(
         [
-            MomentumFactor(
-                name="mom_21d", window=21, impute=True, winsorize=True, standardize=True
-            ),
-            MomentumFactor(
-                name="mom_126d", window=126, impute=True, winsorize=True, standardize=True
-            ),
-            MomentumFactor(
-                name="mom_252d", window=252, impute=True, winsorize=True, standardize=True
-            ),
-            CountryFactor(column="country"),
-            SectorFactor(sector_col="industry"),
-            InterceptFactor(),
-        ]
+            loadings_panel[column]
+            .unstack("date")
+            .reindex(index=assets, columns=dates)
+            .to_numpy()
+            for column in loadings_panel.columns
+        ],
+        axis=1,
     )
-
-    result = rfm.fit(mkt_df, returns)
-
-    print(result.vif.describe())
-
-    result.diagnostics["r2"].plot()
-    plt.show()
+    returns_array = return_panel.to_numpy()
+    valid_times = np.isfinite(returns_array).all(axis=0) & np.isfinite(loadings).all(
+        axis=(0, 1)
+    )
+    categorical_groups = []
+    offset = 0
+    for factor, block in zip(factors, blocks, strict=True):
+        if factor.requires_constraint:
+            categorical_groups.append(tuple(range(offset, offset + block.shape[1])))
+        offset += block.shape[1]
+    rfm = FundamentalFactorModel().fit(
+        returns=returns_array[:, valid_times],
+        loadings=loadings[:, :, valid_times],
+        categorical_groups=categorical_groups,
+    )
+    rfm_diagnostics = RiskFactorDiagnostics(rfm.covariance, rfm.loadings)
+    print(rfm_diagnostics.portfolio_risk(rfm.returns))
