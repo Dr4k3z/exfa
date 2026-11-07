@@ -1,0 +1,558 @@
+\RequirePackage{newfloat}
+\RequirePackage{tcolorbox}
+\RequirePackage{empheq}
+\providecommand{\Kernel}{\text{null}}
+\providecommand{\Rfree}{R_f} 
+\providecommand{\Rsf}{r_{\SDF e}}
+\providecommand{\RetOp}{\mathbf{R}}
+\providecommand{\R}{\mathbb{R}}
+\providecommand{\N}{\mathbb{N}}
+\providecommand{\Real}{\mathbb{R}}
+\providecommand{\SDF}{m}
+\providecommand{\Sec}{\R^N}
+\providecommand{\Ret}{\mathcal S} 
+\providecommand{\abs}[1]{\left| #1 \right|}
+ 
+\providecommand{\tracemath}{\operatorname{trace}}
+\providecommand{\traceop}{\operatorname{tr}}
+\providecommand{\teps}{\tilde \epsilon} 
+%-------------------------
+% GENERAL MODIFIERS
+%-------------------------
+% Support both legacy \trace{A} and operator-style \trace A / \trace(A).
+\ProvideDocumentCommand{\trace}{g}{%
+  \IfNoValueTF{#1}{\traceop}{{\tracemath}\left( #1 \right)}%
+}
+\providecommand{\EST}[1]{\hat{#1}} 
+\providecommand{\TIL}[1]{\tilde{#1}} 
+\providecommand{\VEC}[1]{\mathbf{#1}} 
+% \providecommand{\VEC}[1]{\boldsymbol{#1}} %math bold cursive 
+\ifdefined\symbf
+  \providecommand{\VECG}[1]{\symbf{#1}}
+\else
+  \providecommand{\VECG}[1]{\boldsymbol{#1}}
+\fi
+%-------------------------
+% BOLD
+%-------------------------
+\providecommand{\port}{\VEC w}
+\providecommand{\portw}{\VEC w}
+\providecommand{\portv}{\VEC v} 
+\providecommand{\portu}{\VEC u}
+\providecommand{\bA}{{\VEC{A}}}
+\providecommand{\bB}{{\VEC{B}}}
+\providecommand{\bC}{{\VEC{C}}}
+\providecommand{\bD}{{\VEC{D}}}
+\providecommand{\bE}{{\VEC{E}}}
+\providecommand{\bF}{{\VEC{F}}}
+\providecommand{\bG}{{\VEC{G}}}
+\providecommand{\bH}{{\VEC{H}}}
+\providecommand{\bI}{{\VEC{I}}}
+\providecommand{\bJ}{{\VEC{J}}}
+\providecommand{\bL}{{\VEC{L}}}
+\providecommand{\bLambda}{{\VECG{\Lambda}}}
+\providecommand{\bM}{{\VEC{M}}}
+\providecommand{\bN}{{\VEC{N}}}
+\providecommand{\bP}{{\VEC{P}}}
+\providecommand{\bQ}{{\VEC{Q}}}
+\providecommand{\bR}{{\VEC{R}}}
+\providecommand{\bS}{{\VEC{S}}}
+\providecommand{\bU}{{\VEC{U}}}
+\providecommand{\bV}{{\VEC{V}}}
+\providecommand{\bW}{{\VEC{W}}}
+\providecommand{\bX}{{\VEC{X}}}
+\providecommand{\bY}{{\VEC{Y}}}
+\providecommand{\bZ}{{\VEC{Z}}}
+\providecommand{\ba}{{\VEC{a}}}
+\providecommand{\bb}{{\VEC{b}}} 
+\providecommand{\bc}{{\VEC{h}}}
+\providecommand{\bd}{{\VEC{d}}}
+\providecommand{\be}{{\VEC{e}}}
+\providecommand{\bff}{{\VEC{f}}}
+\providecommand{\bgg}{{\VEC{g}}}
+\providecommand{\bh}{{\VEC{h}}}
+\providecommand{\bone}{{\VEC{1}}}
+\providecommand{\bp}{{\VEC{p}}}
+\providecommand{\br}{{\VEC{r}}}
+\providecommand{\bs}{{\VEC{s}}}
+\providecommand{\bu}{{\VEC{u}}}
+\providecommand{\bv}{{\VEC{v}}}
+\providecommand{\bw}{{\VEC{w}}} 
+\providecommand{\bx}{{\VEC{x}}}
+\providecommand{\by}{{\VEC{y}}}
+\providecommand{\bz}{{\VEC{z}}}
+\providecommand{\balpha}{{\VECG{\alpha}}}
+\providecommand{\bbeta}{{\VECG{\beta}}}
+\providecommand{\bgamma}{{\VECG{\gamma}}}
+\providecommand{\bepsilon}{{\VECG{\epsilon}}}
+\providecommand{\bfeta}{{\VECG{\eta}}}
+\providecommand{\blambda}{{\VECG{\lambda}}}
+\providecommand{\bmu}{{\VECG{\mu}}}
+\providecommand{\bnu}{{\VECG{\nu}}}
+\providecommand{\bdelta}{{\VECG{\delta}}}
+\providecommand{\bDelta}{{\VECG{\Delta}}}
+\providecommand{\btheta}{{\VECG{\theta}}}
+\providecommand{\brho}{{\VECG{\rho}}}
+\providecommand{\bphi}{{\VECG{\phi}}}
+\providecommand{\bpsi}{{\VECG{\psi}}}
+\providecommand{\bTheta}{{\VECG{\Theta}}}
+\providecommand{\bPhi}{{\VECG{\Phi}}}
+\providecommand{\bPsi}{{\VECG{\Psi}}}
+\providecommand{\bxi}{{\VECG{\xi}}}
+\providecommand{\bSigma}{{\VECG{\Sigma}}}
+\providecommand{\bOmega}{{\VECG{\Omega}}} 
+\providecommand{\bzero}{{\VEC{0}}}
+
+%-------------------------
+% CAL
+%-------------------------
+\providecommand{\calA}{{\mathcal{A}}}
+\providecommand{\calB}{{\mathcal{B}}}
+\providecommand{\calD}{{\mathcal{D}}}
+\providecommand{\calF}{{\mathcal{F}}}
+\providecommand{\calL}{{\mathcal{L}}}
+\providecommand{\calS}{{\mathcal{S}}}
+\providecommand{\calX}{{\mathcal{X}}}
+\providecommand{\calY}{{\mathcal{Y}}}
+\providecommand{\calZ}{{\mathcal{Z}}}
+\providecommand{\positives}{{\mathcal{P}}}
+\providecommand{\corr}{\text{cor}}
+\providecommand{\eqnperiod}{\;.}
+\providecommand{\eqncomma}{\;,}
+\providecommand{\variance}{\text{var}}
+\providecommand{\cov}{\text{cov}}
+\providecommand{\hadamard}{\circ}
+
+%-------------------------
+% TILDE AND HAT
+%-------------------------
+\providecommand{\tr}{\tilde r} 
+\providecommand{\tu}{\tilde u} 
+\providecommand{\tv}{\tilde v} 
+\providecommand{\tw}{\tilde w} 
+\providecommand{\tA}{\tilde A} 
+\providecommand{\tB}{\tilde B} 
+\providecommand{\tU}{\tilde U} 
+\providecommand{\tV}{\tilde V}  
+\providecommand{\tD}{\tilde D} 
+\providecommand{\tLambda}{\tilde{\Lambda}} 
+\providecommand{\tsigma}{\tilde{\sigma}}
+\providecommand{\hr}{\hat{r}} 
+\providecommand{\hf}{\hat{f}} 
+\providecommand{\hg}{\hat{g}} 
+\providecommand{\hatbw}{\hat{\bw}}
+
+\providecommand{\suchthat}{\operatorname{{s.}{t.}}} 
+\providecommand{\rank}{\operatorname{rank}}
+\providecommand{\argmin}{\operatorname*{arg\,min}}
+\providecommand{\argmax}{\operatorname*{arg\,max}}
+\providecommand{\dom}{\operatorname{dom}}
+\providecommand{\epi}{\operatorname{epi}}
+\providecommand{\Var}{\operatorname{Var}}
+\providecommand{\Cov}{\operatorname{Cov}}
+\providecommand{\Bias}{\operatorname{Bias}}
+\providecommand{\MSE}{\operatorname{MSE}}
+\providecommand{\df}{\operatorname{df}}
+\providecommand{\range}{\operatorname{range}}
+\providecommand{\vecc}{\operatorname{vec}}
+\providecommand{\E}{\mathbb{E}}
+\providecommand{\Prob}{\mathbb{P}}
+\providecommand{\Sym}{\mathbb{S}}
+\providecommand{\PD}{\Sym^{p}_{++}}
+\providecommand{\PSD}{\Sym^{p}_{+}}
+\providecommand{\inner}[2]{\left\langle #1,\, #2 \right\rangle}
+\providecommand{\nuc}[1]{\norm{#1}_{*}}
+\providecommand{\half}{\tfrac{1}{2}}
+\providecommand{\eps}{\varepsilon}
+\providecommand{\Q}{\mathcal{Q}}
+\providecommand{\Loss}{\mathcal{L}}
+\providecommand{\Data}{\mathcal{D}}
+\providecommand{\Om}{\Omega}
+\providecommand{\Kl}{\mathrm{KL}}
+
+%-------------------------
+% NONPARAMETRIC REGRESSION
+%-------------------------
+% Use \providecommand so manuscripts can retain deliberate local notation.
+\providecommand{\Pp}{\mathbb{P}}
+\providecommand{\cF}{\mathcal{F}}
+\providecommand{\cH}{\mathcal{H}}
+\providecommand{\cR}{\mathcal{R}}
+\providecommand{\cD}{\mathcal{D}}
+\providecommand{\indic}{\mathbf{1}}
+\providecommand{\lesssimc}{\mathrel{\lesssim}}
+\providecommand{\practical}[1]{%
+  \par\smallskip\noindent\textbf{Practical implication.} #1\par\smallskip
+}
+\providecommand{\warning}[1]{%
+  \par\smallskip\noindent\textbf{Failure mode.} #1\par\smallskip
+}
+
+\providecommand{\st}{\text{s.t.}}
+\providecommand{\etal}{\emph{et al.}}
+
+\providecommand{\simmath}{\operatorname{sim}}
+\providecommand{\cossim}{\simmath} 
+
+\providecommand{\distmath}{\operatorname{dist}}
+\providecommand{\dist}{\distmath} 
+ 
+\providecommand{\sdvmath}{\operatorname{stdev}}
+\providecommand{\sdv}{\sdvmath}  
+
+\providecommand{\turnmath}{\operatorname{turn}}
+\providecommand{\turn}{\turnmath}  
+
+\providecommand{\negatives}{\mathcal{N}}
+%\providecommand{\norm}[1]{\left|\left|#1 \right|\right|}
+\providecommand{\norm}[1]{\left\lVert#1\right\rVert}
+\providecommand{\proj}{\text{proj}} 
+\providecommand{\sign}[1]{\text{sgn} \left(#1 \right)}
+% Support both legacy \diag{d} and operator-style \diag d / \diag(d).
+\ProvideDocumentCommand{\diag}{g}{%
+  \IfNoValueTF{#1}{\diagmath}{\diagmath\left(#1\right)}%
+}
+\providecommand{\dg}[1]{\text{dg} \left(#1 \right)}
+\providecommand{\diagmath}{\operatorname{diag}}
+\providecommand{\optimal}{^\star}%
+\providecommand{\transpose}{'}%{^\top}%{^\mathsf{T}}
+\providecommand{\var}{\text{var}}
+\providecommand{\inv}{^{-1}} 
+\providecommand{\eqdist}{\stackrel{d}{=}}
+\providecommand{\refpar}[1]{(\ref{#1})}
+\providecommand{\exdiff}[1]{{\{#1\}}}
+\providecommand{\similar}[2]{{\text{sim}\left( #1, #2\right)}}
+\providecommand{\Image}[1]{\text{Im}\left[#1]\right)}
+\providecommand{\VARIMAX}{\texttt{VARIMAX}}
+\providecommand{\starsection}{$\star$}
+\let\oldemptyset\emptyset
+\let\emptyset\varnothing
+
+
+% Additional notation from Rankbooks_v_4/newcommands.tex.  These use
+% \providecommand so definitions above (and definitions supplied by a class or
+% package) remain authoritative when names overlap.
+\providecommand{\matdet}[1]{\left| #1 \right|}
+\providecommand{\hatport}{\hat\port}
+\providecommand{\tildeport}{\tilde\port}
+
+\providecommand{\bK}{{\VEC{K}}}
+\providecommand{\bT}{{\VEC{T}}}
+\providecommand{\btt}{{\VEC{t}}}
+\providecommand{\vone}{{\VEC{e}}}
+\providecommand{\bsigma}{{\VECG{\sigma}}}
+\providecommand{\btau}{{\VECG{\tau}}}
+\providecommand{\bchi}{{\VECG{\chi}}}
+\providecommand{\bGamma}{{\VECG{\Gamma}}}
+\providecommand{\bzeta}{{\VECG{\zeta}}}
+
+\providecommand{\hatbff}{\hat{\bff}}
+\providecommand{\hatbb}{\hat{\bb}}
+\providecommand{\hatbr}{\hat{\br}}
+\providecommand{\hatbA}{\hat{\bA}}
+\providecommand{\hatbB}{\hat{\bB}}
+\providecommand{\hatbC}{\hat{\bC}}
+\providecommand{\hatbD}{\hat{\bD}}
+\providecommand{\hatbU}{\hat{\bU}}
+\providecommand{\hatbV}{\hat{\bV}}
+\providecommand{\hatbW}{\hat{\bW}}
+\providecommand{\hatbX}{\hat{\bX}}
+\providecommand{\hatbY}{\hat{\bY}}
+\providecommand{\hatbZ}{\hat{\bZ}}
+\providecommand{\hatbDelta}{\hat{\VECG \Delta}}
+\providecommand{\hatbLambda}{\hat{\bLambda}}
+\providecommand{\hatbSigma}{\hat{\VECG \Sigma}}
+\providecommand{\hatbalpha}{\hat{\balpha}}
+\providecommand{\hatbbeta}{\hat{\bbeta}}
+\providecommand{\hatbgamma}{{\hat{\VECG \gamma}}}
+\providecommand{\hatbdelta}{{\hat{\VECG \delta}}}
+\providecommand{\hatbtheta}{{\hat{\VECG \theta}}}
+\providecommand{\hatbepsilon}{\hat{\VECG \epsilon}}
+\providecommand{\hatbfeta}{\hat{\VECG \eta}}
+\providecommand{\hatbmu}{{\hat\bmu}}
+
+\providecommand{\tildebalpha}{{\hat{\VECG \alpha}}}
+\providecommand{\tildebbeta}{{\tilde{\VECG \beta}}}
+\providecommand{\tildebepsilon}{{\tilde{\VECG \epsilon}}}
+\providecommand{\tildeba}{\tilde{\ba}}
+\providecommand{\tildebb}{\tilde{\bb}}
+\providecommand{\tildebff}{\tilde{\bff}}
+\providecommand{\tildebB}{\tilde{\bB}}
+\providecommand{\tildebU}{\tilde{\bU}}
+\providecommand{\tildebV}{\tilde{\bV}}
+\providecommand{\tildebW}{\tilde{\bW}}
+\providecommand{\tildebX}{\tilde{\bX}}
+\providecommand{\tildebY}{\tilde{\bY}}
+\providecommand{\tildebZ}{\tilde{\bZ}}
+\providecommand{\tildebr}{\tilde{\br}}
+\providecommand{\tildebs}{\tilde{\bs}}
+\providecommand{\tildebu}{\tilde{\bu}}
+\providecommand{\tildebv}{\tilde{\bv}}
+\providecommand{\tildebw}{\tilde{\bw}}
+\providecommand{\tildebx}{\tilde{\bx}}
+\providecommand{\tildeby}{\tilde{\by}}
+\providecommand{\tildebz}{\tilde{\bz}}
+
+\providecommand{\COV}{{\bOmega}}
+\providecommand{\hatCOV}{\hat{\VECG \Omega}}
+\providecommand{\hatCOVret}{\hat{\VECG \Omega}_\br}
+\providecommand{\hatCOVfac}{\hat{\VECG \Omega}_\bff}
+\providecommand{\hatCOVeps}{\hat{\VECG \Omega}_\bepsilon}
+\providecommand{\tildeCOVret}{\tilde{\VECG \Omega}_\br}
+\providecommand{\tildeCOVfac}{\tilde{\VECG \Omega}_\bff}
+\providecommand{\tildeCOVeps}{\tilde{\VECG \Omega}_\bepsilon}
+\providecommand{\COVret}{\VECG{\Omega}_\br}
+\providecommand{\COVfac}{\VECG{\Omega}_\bff}
+\providecommand{\COVeps}{\VECG{\Omega}_\bepsilon}
+
+\providecommand{\calQ}{{\mathcal{Q}}}
+\providecommand{\calU}{{\mathcal{U}}}
+\providecommand{\calV}{{\mathcal{V}}}
+
+\providecommand{\vecmath}{\operatorname{vec}}
+\providecommand{\vecmat}{\vecmath}
+\providecommand{\msemath}{\operatorname{MSE}}
+\providecommand{\mse}{\msemath}
+\providecommand{\qlikemath}{\operatorname{QLIKE}}
+\providecommand{\qlike}{\qlikemath}
+\providecommand{\qlikedistmath}{\operatorname{QDIST}}
+\providecommand{\qlikedist}{\qlikedistmath}
+\providecommand{\operatormath}{\operatorname{op}}
+\providecommand{\operator}{\operatormath}
+\providecommand{\sharpemath}{\operatorname{SR}}
+\providecommand{\sharpe}{\sharpemath}
+\providecommand{\memph}[1]{\text{\emph{#1}}}
+\providecommand{\opnorm}[1]{\norm{#1}}
+\providecommand{\rademacher}{\hat R}
+
+
+% Paragraph authorship bars: Human, AI, and Human+AI labels in the left margin.
+% Usage: \begin{humantext} ... \end{humantext}
+%        \begin{aitext}    ... \end{aitext}
+%        \begin{humanaitext} ... \end{humanaitext}
+% The body may contain multiple paragraphs, displayed mathematics, or lists.
+% Keep the body in the normal page flow: a minipage/tcolorbox would trap
+% footnotes and move them to the end of the block. Only the margin decoration
+% is overlaid at shipout, so ordinary \footnote works on the reference page.
+% Two LaTeX runs resolve the positions, including repeated labels across pages.
+% Text keeps its normal width; no page geometry changes are needed.
+% Optional tcolorbox text/spacing keys remain available (fontupper, coltext,
+% before skip, after skip, before upper, after upper); box geometry/capture
+% keys are inapplicable because these environments no longer enclose a box.
+% Redefine the three BarColor colors after loading to customize the bars.
+\ifdefined\gappyParagraphBarsLoaded
+\else
+\newcommand{\gappyParagraphBarsLoaded}{}
+\tcbuselibrary{skins,breakable}
+\RequirePackage{zref-savepos}
+\RequirePackage{zref-abspage}
+\RequirePackage{tikzpagenodes}
+\definecolor{HumanBarColor}{HTML}{79CD76}
+\definecolor{AIBarColor}{HTML}{70B2FF}
+\definecolor{humanAIBarColor}{HTML}{D38730}
+\tcbset{authorship paragraph/.style 2 args={
+  enhanced,blanker,breakable,parbox=false,
+  left=8pt,grow to left by=8pt,
+  before skip=\medskipamount,after skip=\medskipamount,
+  borderline west={1.2pt}{0pt}{#1},
+  overlay={\node[rotate=90,anchor=south east,inner sep=0pt,
+    font=\sffamily\scriptsize\bfseries,text=#1]
+    at ([xshift=-3pt]frame.north west) {#2};}
+}}
+\makeatletter
+\zref@addprop{savepos}{abspage}
+\newcounter{gappyAuthorshipBlock}
+\newcommand*{\gappy@authorship@records}{}
+\newdimen\gappy@authorship@footheight
+% On continuation pages, end the decoration above the ordinary footnote area.
+\AddToHook{cmd/@makecol/before}[gappy/authorship]{%
+  \global\gappy@authorship@footheight=0pt
+  \ifvoid\footins\else
+    \global\gappy@authorship@footheight=\dimexpr
+      \ht\footins+\dp\footins+\skip\footins\relax
+  \fi
+}
+\newcommand*{\gappy@authorship@draw}[3]{%
+  \edef\gappy@first{\zref@extractdefault{gappy-author-#1-start}{abspage}{0}}%
+  \edef\gappy@last{\zref@extractdefault{gappy-author-#1-end}{abspage}{0}}%
+  \ifnum\gappy@first>0
+    \ifnum\gappy@first>\value{abspage}\else
+      \ifnum\gappy@last<\value{abspage}\else
+        \begin{tikzpicture}[remember picture,overlay]
+          \coordinate (gappy-top) at (current page text area.north west);
+          \coordinate (gappy-bottom) at
+            ([yshift=\gappy@authorship@footheight]current page text area.south west);
+          \ifnum\gappy@first=\value{abspage}
+            \coordinate (gappy-start) at
+              ([yshift={\zposy{gappy-author-#1-start}sp+\ht\strutbox}]
+                current page.south west);
+            \coordinate (gappy-top) at (gappy-top |- gappy-start);
+          \fi
+          \ifnum\gappy@last=\value{abspage}
+            \coordinate (gappy-end) at
+              ([yshift={\zposy{gappy-author-#1-end}sp-\dp\strutbox}]
+                current page.south west);
+            \coordinate (gappy-bottom) at (gappy-bottom |- gappy-end);
+          \fi
+          \draw[draw=#2,line width=1.2pt]
+            ([xshift=-8pt]gappy-top) -- ([xshift=-8pt]gappy-bottom);
+          \node[rotate=90,anchor=south east,inner sep=0pt,
+            font=\sffamily\scriptsize\bfseries,text=#2]
+            at ([xshift=-11pt]gappy-top) {#3};
+        \end{tikzpicture}%
+      \fi
+    \fi
+  \fi
+}
+\AddToHook{shipout/foreground}[gappy/authorship]{\gappy@authorship@records}
+\newcommand*{\gappy@authorship@begin}[3]{%
+  \par
+  \stepcounter{gappyAuthorshipBlock}%
+  \edef\gappy@authorship@id{\arabic{gappyAuthorshipBlock}}%
+  \begingroup
+    \edef\gappy@record{\endgroup
+      \noexpand\g@addto@macro\noexpand\gappy@authorship@records{%
+        \noexpand\gappy@authorship@draw{\gappy@authorship@id}{#1}{#2}}}%
+  \gappy@record
+  % Resolve text/spacing options privately. In particular, blanker, the west
+  % borderline, and the AI/Human overlay must not reach nested callout boxes.
+  \begingroup
+    \tcbset{authorship paragraph={#1}{#2},#3}%
+    \extractcolorspec{tcbcolupper}\gappy@authorship@colorspec
+    \edef\gappy@authorship@restore{\endgroup
+      \noexpand\definecolor{gappyAuthorText\gappy@authorship@id}\gappy@authorship@colorspec
+      \def\noexpand\gappy@authorship@beforebox{\unexpanded\expandafter{\kvtcb@beforebox}}%
+      \def\noexpand\gappy@authorship@afterbox{\unexpanded\expandafter{\kvtcb@afterbox}}%
+      \def\noexpand\gappy@authorship@fontupper{\unexpanded\expandafter{\kvtcb@fontupper}}%
+      \def\noexpand\gappy@authorship@beforeupper{\unexpanded\expandafter{\kvtcb@before@upper}}%
+      \def\noexpand\gappy@authorship@afterupper{\unexpanded\expandafter{\kvtcb@after@upper}}%
+    }%
+  \gappy@authorship@restore
+  \let\iftcb@minipage\iffalse
+  \let\tcb@parfillskip@check\relax
+  \gappy@authorship@beforebox
+  \zsavepos{gappy-author-\gappy@authorship@id-start}%
+  \color{gappyAuthorText\gappy@authorship@id}%
+  \gappy@authorship@fontupper\gappy@authorship@beforeupper
+  \ignorespaces
+}
+\newcommand*{\gappy@authorship@end}{%
+  \ifhmode\unskip\fi
+  \gappy@authorship@afterupper
+  \zsavepos{gappy-author-\gappy@authorship@id-end}%
+  \par
+  \gappy@authorship@afterbox
+  \ignorespacesafterend
+}
+\newenvironment{humantext}[1][]{%
+  \gappy@authorship@begin{HumanBarColor}{Human}{#1}}{\gappy@authorship@end}
+\newenvironment{aitext}[1][]{%
+  \gappy@authorship@begin{AIBarColor}{AI}{#1}}{\gappy@authorship@end}
+\newenvironment{humanaitext}[1][]{%
+  \gappy@authorship@begin{humanAIBarColor}{Human+AI}{#1}}{\gappy@authorship@end}
+\makeatother
+\fi
+
+% A project may supply its own styled float and theorem environments while
+% still importing the shared notation above.
+\ifdefined\gappyProjectCommandsLoaded
+\else
+% boxes
+\DeclareFloatingEnvironment{takeaway}
+\DeclareFloatingEnvironment{introbox}
+\DeclareFloatingEnvironment{FAQ}
+\DeclareFloatingEnvironment{procedure} 
+\DeclareFloatingEnvironment{insight}  
+
+\NewEnviron{yellowboxedequation}{%
+  \begin{empheq}[box=\fcolorbox{yellow!50!black}{yellow!10}]{align}
+  \BODY
+  \end{empheq}%
+}
+
+
+\newenvironment{procedureenv}[1]
+{
+	\begin{procedure}[!htbp]
+	\begin{tcolorbox}[sharp corners, colback=blue!10!white, colframe=blue!40!black]
+	\caption{#1} 
+	\rule{\textwidth}{0.4pt}
+}
+{
+	\end{tcolorbox}
+	\end{procedure}
+}
+\newenvironment{insightenv}[1]
+{
+	\begin{insight}[!htbp]
+	\begin{tcolorbox}[sharp corners, colback=red!10!white, colframe=red!40!black]
+	\caption{#1} 
+	\rule{\textwidth}{0.4pt}
+}
+{
+	\end{tcolorbox}
+	\end{insight}
+}
+\newenvironment{faqenv}[1]
+{
+	\begin{FAQ}[!htbp]
+	\begin{tcolorbox}[sharp corners,colback=green!10!white, colframe=green!40!black]
+	\caption{\emph{#1}} 
+	\rule{\textwidth}{0.4pt}
+}
+{
+	\end{tcolorbox}
+	\end{FAQ}
+}
+\newenvironment{introboxenv}
+{
+	\begin{introbox}[!htbp]
+	\begin{tcolorbox}[sharp corners] 
+		{\centering \textbf{The Questions}\\} 
+	\rule{\textwidth}{0.4pt}
+}
+{
+	\end{tcolorbox}
+	\end{introbox}
+}
+\newenvironment{takeawayenv}
+{
+	\begin{takeaway}[!htbp]
+	\begin{tcolorbox}[colframe=white!60!black, sharp corners] 
+		{\centering \textbf{The Takeaways}\\} 
+	\rule{\textwidth}{0.4pt}
+}
+{
+	\end{tcolorbox}
+	\end{takeaway}
+}
+
+
+
+% Number theorem environments by chapter in book-like classes and by section
+% in article-like classes.
+\makeatletter
+\@ifundefined{c@chapter}{%
+  \@ifundefined{lemma}{\newtheorem{lemma}{Lemma}[section]}{}
+  \@ifundefined{theorem}{\newtheorem{theorem}{Theorem}[section]}{}
+  \@ifundefined{proposition}{\newtheorem{proposition}{Proposition}[section]}{}
+  \@ifundefined{assumption}{\newtheorem{assumption}{Assumption}[section]}{}
+  \@ifundefined{corollary}{\newtheorem{corollary}{Corollary}[section]}{}
+  \@ifundefined{definition}{\newtheorem{definition}{Definition}[section]}{}
+  \@ifundefined{exercise}{\newtheorem{exercise}{Exercise}[section]}{}
+  \@ifundefined{example}{\newtheorem{example}{Example}[section]}{}
+}{%
+  \@ifundefined{lemma}{\newtheorem{lemma}{Lemma}[chapter]}{}
+  \@ifundefined{theorem}{\newtheorem{theorem}{Theorem}[chapter]}{}
+  \@ifundefined{proposition}{\newtheorem{proposition}{Proposition}[chapter]}{}
+  \@ifundefined{assumption}{\newtheorem{assumption}{Assumption}[chapter]}{}
+  \@ifundefined{corollary}{\newtheorem{corollary}{Corollary}[chapter]}{}
+  \@ifundefined{definition}{\newtheorem{definition}{Definition}[chapter]}{}
+  \@ifundefined{exercise}{\newtheorem{exercise}{Exercise}[chapter]}{}
+  \@ifundefined{example}{\newtheorem{example}{Example}[chapter]}{}
+}
+\theoremstyle{remark}
+\@ifundefined{remark}{\newtheorem{remark}[theorem]{Remark}}{}
+\theoremstyle{plain}
+\makeatother
+\fi

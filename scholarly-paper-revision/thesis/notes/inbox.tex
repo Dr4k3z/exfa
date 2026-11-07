@@ -1,0 +1,76 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[utf8]{inputenc}
+\usepackage{amsthm}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usepackage{systeme}
+\usepackage{amssymb}
+\usepackage{blindtext}
+\usepackage{graphicx}
+\usepackage{commath}
+\usepackage{multicol}
+\usepackage[inline]{enumitem}   
+\usepackage[absolute,overlay]{textpos}
+\usepackage[margin=0.65in]{geometry}
+\numberwithin{equation}{subsection}
+\usepackage{physics}
+\usepackage{mathtools}
+\usepackage{blindtext}
+\usepackage{accents}
+%\usepackage{tikz-cd}
+\usepackage[arrow]{xy}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{empheq}
+
+\input{style}
+
+\title{Statistical Factor Models}
+\author{Matteo Campagnoli}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\clearpage
+
+\section{Principal Component Analysis}
+Let's first establish the mathematical notation and conventions we will use for the rest of the paper, as well as setting the universe of financial instruments to focus on. Consider $n$ different assets, such as stocks, which we observe for a number of days $T$; let $R \in \mathbb{R}^{n \times T}$ denote the matrix of observed returns. The $t-$th column $\mathbf{r}_t$ represents returns of all the assets at time $t$. Denote the number of factors $m$ and define the \textbf{factor loadings} matrix $B \in \mathbb{R}^{n \times m}$ and \textbf{factor returns} matrix $F \in \mathbb{F}^{m \times T}$.
+
+\begin{gather}
+\label{eq:min_unexplained_variance}
+    \min \Vert R - BF \Vert^2_F \\
+    \text{s.t.} B \in \mathbb{R}^{n \times m} \;\; \text{and} \;\; F \in \mathbb{R}^{m \times T} \notag 
+\end{gather}
+
+Introduce the \textit{Singular Value Decomposition (SVD)} for the returns matrix $R = U S V^T$
+The solution to this problem is given by $B = U(:, 1:m) \equiv U_m$ and $F = S_m V_m^T$. Notice that are many equivalent solutions to this problem: any non-singular matrix $C$ defines a \textit{factor rotation} $\tilde{B} = BC$ and $F = C^{-1}F$ are also solutions. 
+The optimization problem ~\ref{eq:min_unexplained_variance} can be mapped to another very well known problem, that of \textit{Principal Component Analysis (PCA)}: given the covariance matrix $\Sigma_r$ of returns we wish to find a linear combinations of the returns $\mathbf{r}_1,...,\mathbf{r}_T$ that maximizes the variance. This optimization problem has also a quick financial interpretation: finding the portfolio which maximizes the variance.
+
+\begin{gather}
+\label{eq:max_portfolio_variance}
+\max \mathbf{w}^T \Sigma_r \mathbf{w} \\
+\text{s.t.} \Vert \mathbf{w} \Vert^2 = 1 \notag
+\end{gather}
+
+\begin{equation*}
+    \nabla L(\mathbf{w}) = 2 \Sigma \mathbf{w} - 2 \lambda \mathbf{w} = 0 \;\; \implies \;\; \Sigma \mathbf{w} = \lambda \mathbf{w}
+\end{equation*}
+
+We pick the eigenvector of the covariance matrix associated to the biggest eigenvalue. We can also iterate the process by requiring a new vector to be orthogonal to $\mathbf{w}^{1}$.
+
+We can relate these two geometrical problems by applying the \textit{SVD} to the returns matrix and substituting it into the covariance matrix definition 
+
+\begin{equation*}
+    \Sigma = \frac{1}{T} R R^T = \frac{1}{T} (U S V^T) (U S V^T)^T = \frac{1}{T} U S^2 U^T
+\end{equation*}
+
+\subsection{Probabilistic PCA and Factor Models}
+
+\section{Spiked Covariance Model}
+
+\end{document}

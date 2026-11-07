@@ -1,0 +1,186 @@
+\chapter{Mathematical foundations}
+
+\section{Principal component analysis}
+\label{sec:pca}
+
+Principal component analysis (PCA) provides a low-dimensional representation
+of asset returns by retaining the directions with the greatest sample variance.
+We first derive this representation as a least-squares approximation and then
+relate it to a variance maximisation problem.
+
+\subsection{Return data and notation}
+
+Consider $p$ assets observed over $T\geq 2$ dates. Let
+$\mathbf{x}_t\in\mathbb{R}^p$ denote the observed return vector at date $t$,
+and define the sample mean and centred returns by
+\[
+  \overline{\mathbf{x}}=\frac{1}{T}\sum_{t=1}^T\mathbf{x}_t,
+  \qquad
+  \mathbf{r}_t=\mathbf{x}_t-\overline{\mathbf{x}}.
+\]
+We arrange the centred observations as columns of
+\[
+  R=\begin{bmatrix}\mathbf{r}_1&\cdots&\mathbf{r}_T\end{bmatrix}
+  \in\mathbb{R}^{p\times T}.
+\]
+Thus rows correspond to assets and columns to dates. Throughout this section,
+the sample covariance matrix is
+\begin{equation}
+  \label{eq:sample-covariance}
+  S=\frac{1}{T-1}RR^\top.
+\end{equation}
+We reserve $\Sigma_r$ for the population covariance of returns. Using $1/T$
+instead of $1/(T-1)$ rescales the sample eigenvalues but leaves the principal
+directions unchanged. Without centering, $RR^\top/T$ would represent an
+uncentred second moment rather than the centred sample covariance.
+
+\subsection{Low-rank approximation}
+
+For a fixed number $k$ of factors, let $B\in\mathbb{R}^{p\times k}$ denote
+the loading matrix and $F\in\mathbb{R}^{k\times T}$ the factor return matrix.
+The product $BF$ approximates the observed returns, and
+$E=R-BF$ is the matrix of residuals. We choose the approximation by solving
+\begin{equation}
+  \label{eq:min_unexplained_variance}
+  \min_{B\in\mathbb{R}^{p\times k},\,F\in\mathbb{R}^{k\times T}}
+       \lVert R-BF\rVert_F^2,
+  \qquad
+  \lVert A\rVert_F^2=\sum_{i,j}a_{ij}^2.
+\end{equation}
+This objective sums squared residual returns across assets and dates.
+
+Let $q=\operatorname{rank}(R)$ and assume $1\leq k\leq q$. Write the compact
+singular value decomposition as
+\[
+  R=UDV^\top=\sum_{j=1}^q d_j\mathbf{u}_j\mathbf{v}_j^\top,
+  \qquad d_1\geq\cdots\geq d_q>0,
+\]
+where $U\in\mathbb{R}^{p\times q}$ and $V\in\mathbb{R}^{T\times q}$ have
+orthonormal columns, and $D=\operatorname{diag}(d_1,\ldots,d_q)$.
+The best rank-at-most-$k$ approximation is the truncated SVD
+\cite{eckartYoung1936}:
+\begin{equation}
+  \label{eq:truncated-svd}
+  R_k=U_kD_kV_k^\top,
+  \qquad
+  \lVert R-R_k\rVert_F^2=\sum_{j=k+1}^q d_j^2.
+\end{equation}
+Here $U_k$ and $V_k$ contain the first $k$ singular vectors.
+The diagonal matrix $D_k$ retains the corresponding singular values.
+A corresponding solution of \eqref{eq:min_unexplained_variance} is
+\begin{equation}
+  \label{eq:pca-factor-normalization}
+  \widehat B=U_k,
+  \qquad
+  \widehat F=U_k^\top R=D_kV_k^\top.
+\end{equation}
+The loadings are orthonormal under this convention; the scale of the fitted
+returns is carried by the factors.
+
+The loading and factor matrices are not separately identified by their
+product. For any invertible $C\in\mathbb{R}^{k\times k}$,
+\[
+  \widetilde B=\widehat B C,
+  \qquad
+  \widetilde F=C^{-1}\widehat F
+  \quad\Longrightarrow\quad
+  \widetilde B\widetilde F=\widehat B\widehat F.
+\]
+This change of coordinates preserves the fitted returns. Under the additional
+normalisation $B^\top B=I_k$, the transformation must be orthogonal.
+When $k<q$ and $d_k>d_{k+1}$, the optimal fitted
+matrix $R_k$ is unique, although its factorisation is not. A tie at the
+truncation boundary permits different optimal retained subspaces.
+
+\subsection{Variance maximisation}
+
+For a unit vector $\mathbf{w}\in\mathbb{R}^p$, the projected return series is
+$\mathbf{w}^\top R$. Its sample variance equals $\mathbf{w}^\top S\mathbf{w}$.
+The first principal direction solves
+\begin{equation}
+  \label{eq:max_portfolio_variance}
+  \max_{\mathbf{w}\in\mathbb{R}^p}\mathbf{w}^\top S\mathbf{w}
+  \quad\text{subject to}\quad \mathbf{w}^\top\mathbf{w}=1.
+\end{equation}
+With Lagrangian
+$\mathcal{L}(\mathbf{w},\lambda)
+=\mathbf{w}^\top S\mathbf{w}-\lambda(\mathbf{w}^\top\mathbf{w}-1)$,
+the stationarity condition is
+\[
+  \nabla_{\mathbf{w}}\mathcal{L}
+  =2S\mathbf{w}-2\lambda\mathbf{w}=0,
+  \qquad S\mathbf{w}=\lambda\mathbf{w}.
+\]
+To identify the maximum, let $\lambda_1\geq\cdots\geq\lambda_p\geq0$
+be the eigenvalues of $S$, with orthonormal eigenvectors $\mathbf{u}_j$.
+Writing $\mathbf{w}=\sum_j a_j\mathbf{u}_j$ gives
+\[
+  \mathbf{w}^\top S\mathbf{w}
+  =\sum_{j=1}^p\lambda_j a_j^2
+  \leq\lambda_1\sum_{j=1}^p a_j^2=\lambda_1.
+\]
+The bound is attained by a leading eigenvector. Subsequent directions maximise
+variance subject to unit norm and orthogonality to the preceding directions.
+Their projected return series are uncorrelated in the sample.
+
+Financially, $\mathbf{w}^\top\mathbf{r}_t$ is a weighted return. The constraint
+in \eqref{eq:max_portfolio_variance} fixes the Euclidean norm of the weights;
+it imposes neither $\mathbf{1}^\top\mathbf{w}=1$ nor nonnegative weights.
+The PCA direction therefore describes a maximum-variance exposure under this
+normalisation, rather than a fully invested, long-only portfolio.
+
+\subsection{Equivalence and residual variance}
+
+Substituting the compact SVD into \eqref{eq:sample-covariance} yields
+\begin{equation}
+  \label{eq:svd-covariance}
+  S=\frac{1}{T-1}UDV^\top VD U^\top
+   =U\frac{D^2}{T-1}U^\top.
+\end{equation}
+Hence the left singular vectors of $R$ are the nonzero-variance principal
+directions, with $\lambda_j=d_j^2/(T-1)$ for $j\leq q$.
+Any remaining eigenvalues are zero. The low-rank approximation and the
+variance-maximisation construction thus select the same leading subspace.
+
+The equivalence also follows directly from the residual objective. Any
+rank-at-most-$k$ fitted matrix has columns in a subspace contained in some
+$k$-dimensional subspace with orthonormal basis $Q$. Orthogonal projection
+onto that subspace minimises the distance of each column of $R$, so
+\[
+  \lVert R-QQ^\top R\rVert_F^2
+  =\lVert R\rVert_F^2-\operatorname{tr}(Q^\top RR^\top Q).
+\]
+In an eigenbasis of $S$, put $a_j=\lVert Q^\top\mathbf{u}_j\rVert_2^2$.
+Then $0\leq a_j\leq1$, $\sum_j a_j=k$, and
+\[
+  \operatorname{tr}(Q^\top S Q)=\sum_{j=1}^p\lambda_j a_j
+  \leq\sum_{j=1}^k\lambda_j.
+\]
+Choosing $Q=U_k$ attains the bound, which proves optimality of
+\eqref{eq:truncated-svd} for the stated objective.
+
+Under \eqref{eq:pca-factor-normalization}, the sample factor covariance and
+residuals are
+\[
+  \widehat\Sigma_f
+  =\frac{1}{T-1}\widehat F\widehat F^\top
+  =\operatorname{diag}(\lambda_1,\ldots,\lambda_k),
+  \qquad
+  \widehat E=(I_p-U_kU_k^\top)R.
+\]
+Since $\widehat F\widehat E^\top=0$, the sample covariance decomposes exactly as
+\begin{equation}
+  \label{eq:pca-sample-decomposition}
+  S=\widehat B\widehat\Sigma_f\widehat B^\top
+    +\frac{1}{T-1}\widehat E\widehat E^\top.
+\end{equation}
+The unexplained variance, summed over assets, is
+\[
+  \frac{1}{T-1}\lVert\widehat E\rVert_F^2
+  =\sum_{j=k+1}^p\lambda_j.
+\]
+These are identities for the fitted sample. Interpreting the retained
+components as latent population factors, choosing their number, and forecasting
+future residual risk require additional modelling assumptions.
+
+% Pending original notes: probabilistic PCA/factor models and spiked covariance.

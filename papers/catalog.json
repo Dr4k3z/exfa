@@ -1,0 +1,30 @@
+{
+  "organized_on": "2026-10-31",
+  "papers": [
+    {
+      "original_filename": "nihms-1503591.pdf",
+      "path": "01_RMT_and_PCA_Foundations/Johnstone_Paul_2018_PCA_in_High_Dimensions.pdf",
+      "sha256": "c9cab2c77149184f4ebe20f825a6ebeeed8494cd5850accf0c4d0938ea1c1eee"
+    },
+    {
+      "original_filename": "high_dimensional_statistics_investment_thesis_research_plan.pdf",
+      "path": "02_Factor_Selection/Bai_Ng_2002_Determining_the_Number_of_Factors.pdf",
+      "sha256": "001139be7f1416b903afc82a3d8a8743c8a34b1711cd6273aa62dfc1f5d8af13"
+    },
+    {
+      "original_filename": "1311.0851v3.pdf",
+      "path": "03_Covariance_Shrinkage/Donoho_Gavish_Johnstone_2017_Optimal_Eigenvalue_Shrinkage.pdf",
+      "sha256": "72c9e3fda5844df2e515446e82c2ed61d758e4a098ef1601fe3603e3d7b501dd"
+    },
+    {
+      "original_filename": "nihms-1602372.pdf",
+      "path": "04_Correlation_Matrices/Morales_Jimenez_et_al_2021_Spiked_Correlation_Eigenstructure.pdf",
+      "sha256": "ca8ec8159d7ad87f5b69301664eff43cbded24ff7c05c2563d37d91c8b06a808"
+    },
+    {
+      "original_filename": "1405.7511v3.pdf",
+      "path": "05_Matrix_Denoising/Gavish_Donoho_2017_Optimal_Singular_Value_Shrinkage.pdf",
+      "sha256": "34da4d30a252b14b39a20de569043b5a20326103bbf196fe937ccbddfaec0199"
+    }
+  ]
+}
