@@ -118,3 +118,10 @@ This report is separate from aggregate covariance/reconstruction diagnostics and
 does not change the model's current complete-panel fitting requirement. The
 reconstruction diagnostics using one fixed loading matrix are not a substitute
 for these historical regression metrics.
+
+## Configurable preprocessing
+
+The model-independent NumPy pipeline supports user-defined cleaning callables,
+optional same-time loading imputation and winsorization, and explicit aligned
+missing-data filtering. See [the preprocessing guide](docs/preprocessing.md) for
+policies, array shapes, and examples.

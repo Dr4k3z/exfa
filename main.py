@@ -11,6 +11,12 @@ from exfa.models.fundamental_model.factors import (
     MomentumFactor,
     SectorFactor,
 )
+from exfa.preprocessing import (
+    PanelData,
+    PreprocessingPipeline,
+    drop_incomplete_assets,
+    require_finite,
+)
 
 
 def read_data_from_parquet(
@@ -77,6 +83,15 @@ if __name__ == "__main__":
         .reindex(index=assets, columns=dates)
         .to_numpy()[keep_assets, history:]
     )
-    rfm = FundamentalFactorModel(factors).fit(returns_array, market_data)
+    # Warmup is removed explicitly so rolling factors retain contiguous history.
+    pipeline = PreprocessingPipeline([drop_incomplete_assets, require_finite])
+    cleaned = pipeline.run(PanelData(returns_array))
+    cleaned_market_data = {
+        name: values[cleaned.asset_indices] for name, values in market_data.items()
+    }
+    cleaned_assets = assets[keep_assets][cleaned.asset_indices]
+    cleaned_dates = dates[history:][cleaned.time_indices]
+    print(f"Retained {len(cleaned_assets)} assets and {len(cleaned_dates)} dates")
+    rfm = FundamentalFactorModel(factors).fit(cleaned.returns, cleaned_market_data)
     rfm_diagnostics = RiskFactorDiagnostics(rfm.covariance, rfm.loadings)
     print(rfm_diagnostics.portfolio_risk(rfm.returns))
