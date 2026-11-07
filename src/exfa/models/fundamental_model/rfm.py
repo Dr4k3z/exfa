@@ -7,7 +7,7 @@ import pandas as pd
 from exfa.factors.base import ContinuousFactor, Factor
 from exfa.regression import CrossSectionalRegression, RegressionFitError
 
-from .result import FactorModelResult
+from ...core.result import FactorModelResult
 
 
 class RiskFactorModel:

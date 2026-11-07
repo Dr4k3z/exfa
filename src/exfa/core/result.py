@@ -5,9 +5,8 @@ from typing import Self
 import numpy as np
 import pandas as pd
 
+from exfa.diagnostics.regression import compute_regression_diagnostics
 from exfa.regression import CrossSectionalRegressionResult
-
-from .model_diagnostics import compute_regression_diagnostics
 
 
 @dataclass
