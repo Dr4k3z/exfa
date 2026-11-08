@@ -31,9 +31,7 @@ class FundamentalFactorModel(RiskFactorModel):
 
     @property
     def categorical_factors(self) -> tuple[CategoricalFactor, ...]:
-        return tuple(
-            factor for factor in self.factors if isinstance(factor, CategoricalFactor)
-        )
+        return tuple(factor for factor in self.factors if isinstance(factor, CategoricalFactor))
 
     @property
     def continuous_factors(self) -> tuple[ContinuousFactor, ...]:
@@ -144,9 +142,7 @@ class FundamentalFactorModel(RiskFactorModel):
         loadings = np.concatenate(blocks, axis=1) if len(blocks) > 1 else blocks[0]
 
         if not np.isfinite(loadings).all():
-            raise ValueError(
-                "loadings must contain only finite values across the complete panel"
-            )
+            raise ValueError("loadings must contain only finite values across the complete panel")
 
         regression = CrossSectionalRegression(min_obs=min_obs, ridge=ridge)
         daily_results = tuple(
