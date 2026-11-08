@@ -15,11 +15,16 @@ class RegressionFitError(ValueError):
 @dataclass(frozen=True)
 class CrossSectionalRegressionResult:
     factor_returns: np.ndarray
-    fitted_returns: np.ndarray
     residuals: np.ndarray
     loadings: np.ndarray
     constraint: LinearConstraint | None
     dropped_assets: tuple[int, ...]
+
+    @property
+    def fitted_returns(self) -> np.ndarray:
+        fitted_returns = self.loadings @ self.factor_returns
+        fitted_returns[list(self.dropped_assets)] = np.nan
+        return fitted_returns
 
     @property
     def n_obs(self) -> int:
@@ -98,13 +103,10 @@ class CrossSectionalRegression:
             weights=weights[valid] if weights is not None else None,
             constraint=constraint,
         )
-        fitted_returns = np.full(returns.shape, np.nan)
         residuals = np.full(returns.shape, np.nan)
-        fitted_returns[valid] = result.fitted_values
         residuals[valid] = result.residuals
         return CrossSectionalRegressionResult(
             result.coefficients,
-            fitted_returns,
             residuals,
             loadings.copy(),
             constraint,

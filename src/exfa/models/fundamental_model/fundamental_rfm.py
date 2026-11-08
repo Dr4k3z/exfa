@@ -4,6 +4,7 @@ from typing import Self, override
 import numpy as np
 
 from exfa.models.fundamental_model.factors import Factor
+from exfa.models.fundamental_model.factors.base import CategoricalFactor, ContinuousFactor
 from exfa.models.fundamental_model.regression import (
     CrossSectionalRegression,
     CrossSectionalRegressionResult,
@@ -19,16 +20,24 @@ class FundamentalFactorModel(RiskFactorModel):
     """
 
     def __init__(self, factors: Sequence[Factor] = ()) -> None:
-        self._factors = list(factors)
-        self._continuous_columns: tuple[int, ...] | None = None
-        self._loadings_history: np.ndarray | None = None
+        self._factors = tuple(factors)
         self._daily_results: tuple[CrossSectionalRegressionResult, ...] | None = None
 
         super().__init__()
 
     @property
-    def factors(self) -> list[Factor]:
+    def factors(self) -> tuple[Factor, ...]:
         return self._factors
+
+    @property
+    def categorical_factors(self) -> tuple[CategoricalFactor, ...]:
+        return tuple(
+            factor for factor in self.factors if isinstance(factor, CategoricalFactor)
+        )
+
+    @property
+    def continuous_factors(self) -> tuple[ContinuousFactor, ...]:
+        return tuple(factor for factor in self.factors if isinstance(factor, ContinuousFactor))
 
     @fitted_property
     def loadings_history(self) -> np.ndarray | None:
@@ -36,7 +45,9 @@ class FundamentalFactorModel(RiskFactorModel):
         Loadings with shape (assets, factors, times).
         """
 
-        return self._loadings_history
+        if self._daily_results is None:
+            return None
+        return np.stack([result.loadings for result in self.daily_results], axis=2)
 
     @fitted_property
     def daily_results(self) -> tuple[CrossSectionalRegressionResult, ...] | None:
@@ -47,22 +58,39 @@ class FundamentalFactorModel(RiskFactorModel):
         return self._daily_results
 
     @fitted_property
-    def continuous_columns(self) -> tuple[int, ...] | None:
-        return self._continuous_columns
+    @override
+    def loadings(self) -> np.ndarray:
+        return self.daily_results[-1].loadings
+
+    @fitted_property
+    @override
+    def factor_returns(self) -> np.ndarray:
+        return np.column_stack([result.factor_returns for result in self.daily_results])
+
+    @fitted_property
+    @override
+    def residuals(self) -> np.ndarray:
+        return np.column_stack([result.residuals for result in self.daily_results])
 
     def add_factor(self, factor: Factor) -> Self:
-        self._factors.append(factor)
+        """
+        Append a factor and invalidate all fitted results; fit again before use.
+
+        The factors tuple is immutable, but Factor objects remain caller-owned.
+        After modifying a Factor object directly, callers must fit again.
+        """
+
+        self._factors += (factor,)
+        RiskFactorModel.__init__(self)
+        self._daily_results = None
         return self
 
-    def _validate_weights(self, weights: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _validate_weights(weights: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
         weights = np.asarray(weights, dtype=float)
-        if weights.shape == (self.num_assets,):
-            weights = np.broadcast_to(weights[:, None], self.returns.shape)
-        if (
-            weights.shape != self.returns.shape
-            or not np.isfinite(weights).all()
-            or np.any(weights <= 0)
-        ):
+        if weights.shape == (shape[0],):
+            weights = np.broadcast_to(weights[:, None], shape)
+        if weights.shape != shape or not np.isfinite(weights).all() or np.any(weights <= 0):
             raise ValueError(
                 "weights must be finite, positive, and shaped (assets,) or (assets, times)"
             )
@@ -88,12 +116,17 @@ class FundamentalFactorModel(RiskFactorModel):
         Failed validation or fitting leaves previously fitted state unchanged.
         """
 
+        if weights is not None:
+            weights = self._validate_weights(weights, returns.shape)
+
         for factor in self.factors:
             factor.validate_data(market_data, returns.shape)
 
+        if not self.factors:
+            raise ValueError("At least one factor is required")
+
         blocks = []
         categorical_groups = []
-        continuous_columns = []
         names = []
         offset = 0
         for factor in self.factors:
@@ -102,8 +135,6 @@ class FundamentalFactorModel(RiskFactorModel):
             indices = tuple(range(offset, offset + block.shape[1]))
             if factor.requires_constraint:
                 categorical_groups.append(indices)
-            if factor.include_in_vif:
-                continuous_columns.extend(indices)
             if factor.name in names:
                 raise ValueError(f"Duplicate factor name: {factor.name!r}")
             names.append(factor.name)
@@ -111,6 +142,11 @@ class FundamentalFactorModel(RiskFactorModel):
             blocks.append(block)
 
         loadings = np.concatenate(blocks, axis=1) if len(blocks) > 1 else blocks[0]
+
+        if not np.isfinite(loadings).all():
+            raise ValueError(
+                "loadings must contain only finite values across the complete panel"
+            )
 
         regression = CrossSectionalRegression(min_obs=min_obs, ridge=ridge)
         daily_results = tuple(
@@ -120,23 +156,8 @@ class FundamentalFactorModel(RiskFactorModel):
                 categorical_groups=categorical_groups,
                 weights=weights[:, time] if weights is not None else None,
             )
-            for time in range(self.num_times)
+            for time in range(returns.shape[1])
         )
-        factor_returns = np.column_stack([result.factor_returns for result in daily_results])
-        residuals = np.column_stack([result.residuals for result in daily_results])
-        latest_loadings = loadings[:, :, -1]
-        residual_variance = np.var(residuals, axis=1, ddof=1)
-        factor_covariance = np.atleast_2d(np.cov(factor_returns, ddof=1))
-        covariance = latest_loadings @ factor_covariance @ latest_loadings.T + np.diag(
-            residual_variance
-        )
-
-        self._loadings = latest_loadings
-        self._loadings_history = loadings
-        self._factor_returns = factor_returns
-        self._residuals = residuals
-        self._residual_variance = residual_variance
-        self._covariance = covariance
+        self._returns = returns
         self._daily_results = daily_results
-        self._continuous_columns = tuple(continuous_columns)
         return self

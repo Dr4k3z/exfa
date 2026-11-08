@@ -16,6 +16,10 @@ data providers, and diagnostic calculations are separate concerns.
   returns are `(factors, times)`.
 - Keep model estimation NumPy-based. Perform pandas data preparation separately.
 - Use type annotations and preserve precise types through decorators and descriptors.
+- Classes should store only the minimal attributes they require. Keep a single
+  source of truth; do not separately store values derivable from existing state,
+  such as factor labels, column indices, counts, or other metadata. Expose derived
+  values through properties or descriptive methods such as `get_factor_labels()`.
 - Use dataclasses only when they suit a simple record of related data. Do not use
   them by default or introduce unnecessary wrappers and abstractions.
 - Put opening and closing docstring quotes on separate lines, with the text

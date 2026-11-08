@@ -18,7 +18,9 @@ def get_feature(data: MarketData, name: str, shape: tuple[int, int]) -> np.ndarr
     """
 
     values = np.asarray(data[name])
-    return np.broadcast_to(values[:, None], shape) if values.ndim == 1 else values[:, -shape[1] :]
+    return (
+        np.broadcast_to(values[:, None], shape) if values.ndim == 1 else values[:, -shape[1] :]
+    )
 
 
 class Factor(ABC):
@@ -49,7 +51,9 @@ class Factor(ABC):
             if not (
                 values.shape == (shape[0],)
                 or (
-                    values.ndim == 2 and values.shape[0] == shape[0] and values.shape[1] >= shape[1]
+                    values.ndim == 2
+                    and values.shape[0] == shape[0]
+                    and values.shape[1] >= shape[1]
                 )
             ):
                 raise ValueError(
@@ -102,11 +106,19 @@ class CategoricalFactor(Factor):
     def requires_constraint(self) -> bool:
         return True
 
-    @override
-    def compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+    def compute_categories(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        """
+        Return category labels in the same sorted order as loading columns.
+        """
+
         self.validate_data(data, shape)
         values = get_feature(data, self.column, shape)
         if any(value is None or value != value for value in values.flat):
             raise ValueError(f"Categorical feature {self.column!r} contains missing values")
-        categories = np.unique(values)
+        return np.unique(values)
+
+    @override
+    def compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        categories = self.compute_categories(data, shape)
+        values = get_feature(data, self.column, shape)
         return (values[:, None, :] == categories[None, :, None]).astype(float)
