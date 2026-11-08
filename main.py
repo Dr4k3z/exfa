@@ -59,37 +59,24 @@ if __name__ == "__main__":
         SectorFactor(sector_col="industry"),
         InterceptFactor(),
     ]
-    # Factor construction uses labeled data; model estimation uses NumPy only.
-    blocks = [factor.compute(mkt_df) for factor in factors]
-    loadings_panel = pd.concat(blocks, axis=1)
-    if loadings_panel.columns.has_duplicates:
-        raise ValueError("Factor loading names must be unique")
-    return_panel = returns.unstack("date").sort_index().sort_index(axis=1)
-    assets, dates = return_panel.index, return_panel.columns
-    loadings = np.stack(
-        [
-            loadings_panel[column]
-            .unstack("date")
-            .reindex(index=assets, columns=dates)
-            .to_numpy()
-            for column in loadings_panel.columns
-        ],
-        axis=1,
+    # Align once at the data boundary; keep leading prices for rolling factors.
+    prices = mkt_df["price"].unstack("date").sort_index().sort_index(axis=1)
+    assets, dates = prices.index, prices.columns
+    price_values = prices.to_numpy()
+    keep_assets = np.isfinite(price_values).all(axis=1) & (price_values > 0).all(axis=1)
+    market_data = {
+        column: mkt_df[column]
+        .unstack("date")
+        .reindex(index=assets, columns=dates)
+        .to_numpy()[keep_assets]
+        for column in ("price", "country", "industry")
+    }
+    history = max(factor.window for factor in factors if isinstance(factor, MomentumFactor))
+    returns_array = (
+        returns.unstack("date")
+        .reindex(index=assets, columns=dates)
+        .to_numpy()[keep_assets, history:]
     )
-    returns_array = return_panel.to_numpy()
-    valid_times = np.isfinite(returns_array).all(axis=0) & np.isfinite(loadings).all(
-        axis=(0, 1)
-    )
-    categorical_groups = []
-    offset = 0
-    for factor, block in zip(factors, blocks, strict=True):
-        if factor.requires_constraint:
-            categorical_groups.append(tuple(range(offset, offset + block.shape[1])))
-        offset += block.shape[1]
-    rfm = FundamentalFactorModel().fit(
-        returns=returns_array[:, valid_times],
-        loadings=loadings[:, :, valid_times],
-        categorical_groups=categorical_groups,
-    )
+    rfm = FundamentalFactorModel(factors).fit(returns_array, market_data)
     rfm_diagnostics = RiskFactorDiagnostics(rfm.covariance, rfm.loadings)
     print(rfm_diagnostics.portfolio_risk(rfm.returns))

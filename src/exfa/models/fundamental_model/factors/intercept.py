@@ -1,27 +1,25 @@
 from collections.abc import Sequence
 from typing import override
 
-import pandas as pd
+import numpy as np
 
-from exfa.models.fundamental_model.factors.base import ContinuousFactor
+from .base import ContinuousFactor, MarketData
 
 
 class InterceptFactor(ContinuousFactor):
     def __init__(self) -> None:
-        super().__init__(name="intercept", impute=False, winsorize=False, standardize=False)
+        super().__init__("intercept", False, False, False)
 
     @property
     @override
     def required_features(self) -> Sequence[str]:
         return ()
 
+    @property
     @override
-    def _compute(
-        self,
-        data: pd.DataFrame,
-    ) -> pd.Series:
-        return pd.Series(
-            1.0,
-            index=data.index,
-            name=self.name,
-        )
+    def include_in_vif(self) -> bool:
+        return False
+
+    @override
+    def _compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        return np.ones(shape)

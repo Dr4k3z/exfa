@@ -130,9 +130,7 @@ class LsegDataProvider:
 
         _ = self.session
         requested = [fields] if isinstance(fields, str) else list(fields)
-        return ld.get_data(
-            universe=_assets(assets), fields=requested, parameters=parameters
-        )
+        return ld.get_data(universe=_assets(assets), fields=requested, parameters=parameters)
 
     def get_trbc(self, assets: str | Sequence[str]) -> pd.DataFrame:
         """
@@ -309,9 +307,7 @@ def _date_range(start: Date, end: Date) -> None:
         raise ValueError(f"start ({start}) must be on or before end ({end}).")
 
 
-def _normalize_price(
-    frame: pd.DataFrame, assets: Sequence[str], field: str
-) -> pd.DataFrame:
+def _normalize_price(frame: pd.DataFrame, assets: Sequence[str], field: str) -> pd.DataFrame:
     if set(frame.columns).issubset(assets):
         frame = (
             frame.rename_axis("date")
@@ -337,11 +333,15 @@ def _normalize_price(
 def _normalize_tr_timeseries(frame: pd.DataFrame, name: str) -> pd.DataFrame:
     frame = frame.copy()
     frame.columns = [_snake_case(str(column)) for column in frame.columns]
-    asset = next((column for column in frame if column in {"asset", "instrument", "ric"}), None)
+    asset = next(
+        (column for column in frame if column in {"asset", "instrument", "ric"}), None
+    )
     dates = [column for column in frame if column == "date" or column.endswith("_date")]
     values = [column for column in frame if column != asset and column not in dates]
     if asset is None or not dates or len(values) != 1:
-        raise LsegSchemaError(f"Cannot identify date, asset and value in {list(frame.columns)}")
+        raise LsegSchemaError(
+            f"Cannot identify date, asset and value in {list(frame.columns)}"
+        )
     return _as_timeseries(
         frame.rename(columns={asset: "asset", dates[0]: "date", values[0]: name})[
             ["date", "asset", name]

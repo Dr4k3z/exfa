@@ -43,20 +43,14 @@ class RiskFactorDiagnostics:
     def __init__(self, covariance: np.ndarray, loadings: np.ndarray) -> None:
         self._estimated_covariance = np.array(covariance, copy=True)
         self._loadings = np.array(loadings, copy=True)
-        self._cholesky_factor: np.ndarray | None = None
-        self._logdet: float | None = None
 
     @property
     def cholesky_factor(self) -> np.ndarray:
-        if self._cholesky_factor is None:
-            self._cholesky_factor = np.linalg.cholesky(self._estimated_covariance)
-        return self._cholesky_factor
+        return np.linalg.cholesky(self._estimated_covariance)
 
     @property
     def logdet(self) -> float:
-        if self._logdet is None:
-            self._logdet = float(2 * np.sum(np.log(np.diag(self.cholesky_factor))))
-        return self._logdet
+        return float(2 * np.sum(np.log(np.diag(self.cholesky_factor))))
 
     @property
     def num_assets(self) -> int:
