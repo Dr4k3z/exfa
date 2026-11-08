@@ -249,7 +249,9 @@ class ConstrainedWLS:
                 raise ValueError("`weights` must be one-dimensional.")
 
             if weights.shape[0] != y.shape[0]:
-                raise ValueError("`weights` and `y` contain different numbers of observations.")
+                raise ValueError(
+                    "`weights` and `y` contain different numbers of observations."
+                )
 
             if not np.all(np.isfinite(weights)):
                 raise ValueError("`weights` contains NaN or infinite values.")

@@ -1,9 +1,9 @@
 from collections.abc import Sequence
 from typing import override
 
-import pandas as pd
+import numpy as np
 
-from exfa.factors.base import ContinuousFactor
+from .base import ContinuousFactor, MarketData
 
 
 class SizeFactor(ContinuousFactor):
@@ -24,6 +24,5 @@ class SizeFactor(ContinuousFactor):
         return (self.size_col,)
 
     @override
-    def _compute(self, data) -> pd.Series:
-        # TODO
-        return pd.Series([])
+    def _compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        raise NotImplementedError("SizeFactor computation has not been implemented")

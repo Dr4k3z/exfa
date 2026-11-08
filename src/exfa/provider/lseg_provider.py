@@ -15,15 +15,21 @@ from lseg.data.session import Session
 
 
 class LsegProviderError(RuntimeError):
-    """Base error raised by the LSEG ingestion client."""
+    """
+    Base error raised by the LSEG ingestion client.
+    """
 
 
 class LsegSessionError(LsegProviderError):
-    """Raised when an extraction is attempted without an open session."""
+    """
+    Raised when an extraction is attempted without an open session.
+    """
 
 
 class LsegSchemaError(LsegProviderError):
-    """Raised when LSEG returns data that violates the provider contract."""
+    """
+    Raised when LSEG returns data that violates the provider contract.
+    """
 
 
 class PriceField(StrEnum):
@@ -71,7 +77,8 @@ class LsegConfig:
 
 
 class LsegDataProvider:
-    """LSEG ingestion client with a stable time-series contract.
+    """
+    LSEG ingestion client with a stable time-series contract.
 
     Historical methods return a sorted, unique ``(date, asset)`` MultiIndex.
     Static/reference methods return ordinary tabular dataframes.
@@ -117,15 +124,19 @@ class LsegDataProvider:
         fields: str | Sequence[str],
         parameters: str | dict[str, Any] | None = None,
     ) -> pd.DataFrame:
-        """Call LSEG's generic endpoint without changing its output."""
+        """
+        Call LSEG's generic endpoint without changing its output.
+        """
+
         _ = self.session
         requested = [fields] if isinstance(fields, str) else list(fields)
-        return ld.get_data(
-            universe=_assets(assets), fields=requested, parameters=parameters
-        )
+        return ld.get_data(universe=_assets(assets), fields=requested, parameters=parameters)
 
     def get_trbc(self, assets: str | Sequence[str]) -> pd.DataFrame:
-        """Return static country and TRBC classifications, one row per asset."""
+        """
+        Return static country and TRBC classifications, one row per asset.
+        """
+
         frame = self.get_data(
             assets,
             [
@@ -147,7 +158,10 @@ class LsegDataProvider:
         end_date: Date,
         fields: Sequence[PriceField | str] = DEFAULT_PRICE_FIELDS,
     ) -> pd.DataFrame:
-        """Return historical pricing indexed by ``(date, asset)``."""
+        """
+        Return historical pricing indexed by ``(date, asset)``.
+        """
+
         _ = self.session
         universe = _assets(assets)
         _date_range(start_date, end_date)
@@ -178,7 +192,10 @@ class LsegDataProvider:
         frequency: str = "D",
         currency: str | None = None,
     ) -> pd.DataFrame:
-        """Fetch one TR value/date pair as a raw observed time series."""
+        """
+        Fetch one TR value/date pair as a raw observed time series.
+        """
+
         _date_range(start_date, end_date)
         parameters: dict[str, Any] = {
             "SDate": start_date.isoformat(),
@@ -205,11 +222,13 @@ class LsegDataProvider:
         frequency: str = "D",
         currency: str | None = None,
     ) -> pd.DataFrame:
-        """Fetch fields independently and outer-join their observation dates.
+        """
+        Fetch fields independently and outer-join their observation dates.
 
         A mapping supplies ``LSEG field -> output column`` names. A sequence
         derives output names from the LSEG field identifiers.
         """
+
         items: list[tuple[str, str]]
         if isinstance(fields, Mapping):
             items = [(str(field), str(name)) for field, name in fields.items()]
@@ -288,9 +307,7 @@ def _date_range(start: Date, end: Date) -> None:
         raise ValueError(f"start ({start}) must be on or before end ({end}).")
 
 
-def _normalize_price(
-    frame: pd.DataFrame, assets: Sequence[str], field: str
-) -> pd.DataFrame:
+def _normalize_price(frame: pd.DataFrame, assets: Sequence[str], field: str) -> pd.DataFrame:
     if set(frame.columns).issubset(assets):
         frame = (
             frame.rename_axis("date")
@@ -316,11 +333,15 @@ def _normalize_price(
 def _normalize_tr_timeseries(frame: pd.DataFrame, name: str) -> pd.DataFrame:
     frame = frame.copy()
     frame.columns = [_snake_case(str(column)) for column in frame.columns]
-    asset = next((column for column in frame if column in {"asset", "instrument", "ric"}), None)
+    asset = next(
+        (column for column in frame if column in {"asset", "instrument", "ric"}), None
+    )
     dates = [column for column in frame if column == "date" or column.endswith("_date")]
     values = [column for column in frame if column != asset and column not in dates]
     if asset is None or not dates or len(values) != 1:
-        raise LsegSchemaError(f"Cannot identify date, asset and value in {list(frame.columns)}")
+        raise LsegSchemaError(
+            f"Cannot identify date, asset and value in {list(frame.columns)}"
+        )
     return _as_timeseries(
         frame.rename(columns={asset: "asset", dates[0]: "date", values[0]: name})[
             ["date", "asset", name]

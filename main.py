@@ -1,11 +1,16 @@
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from exfa import RiskFactorModel
-from exfa.factors import CountryFactor, InterceptFactor, MomentumFactor, SectorFactor
+from exfa import FundamentalFactorModel
+from exfa.diagnostics import RiskFactorDiagnostics
+from exfa.models.fundamental_model.factors import (
+    CountryFactor,
+    InterceptFactor,
+    MomentumFactor,
+    SectorFactor,
+)
 
 
 def read_data_from_parquet(
@@ -40,26 +45,38 @@ if __name__ == "__main__":
 
     returns = mkt_df["price"].groupby(level="asset").transform(lambda x: np.log(x).diff())
 
-    rfm = RiskFactorModel(
-        [
-            MomentumFactor(
-                name="mom_21d", window=21, impute=True, winsorize=True, standardize=True
-            ),
-            MomentumFactor(
-                name="mom_126d", window=126, impute=True, winsorize=True, standardize=True
-            ),
-            MomentumFactor(
-                name="mom_252d", window=252, impute=True, winsorize=True, standardize=True
-            ),
-            CountryFactor(column="country"),
-            SectorFactor(sector_col="industry"),
-            InterceptFactor(),
-        ]
+    factors = [
+        MomentumFactor(
+            name="mom_21d", window=21, impute=True, winsorize=True, standardize=True
+        ),
+        MomentumFactor(
+            name="mom_126d", window=126, impute=True, winsorize=True, standardize=True
+        ),
+        MomentumFactor(
+            name="mom_252d", window=252, impute=True, winsorize=True, standardize=True
+        ),
+        CountryFactor(column="country"),
+        SectorFactor(sector_col="industry"),
+        InterceptFactor(),
+    ]
+    # Align once at the data boundary; keep leading prices for rolling factors.
+    prices = mkt_df["price"].unstack("date").sort_index().sort_index(axis=1)
+    assets, dates = prices.index, prices.columns
+    price_values = prices.to_numpy()
+    keep_assets = np.isfinite(price_values).all(axis=1) & (price_values > 0).all(axis=1)
+    market_data = {
+        column: mkt_df[column]
+        .unstack("date")
+        .reindex(index=assets, columns=dates)
+        .to_numpy()[keep_assets]
+        for column in ("price", "country", "industry")
+    }
+    history = max(factor.window for factor in factors if isinstance(factor, MomentumFactor))
+    returns_array = (
+        returns.unstack("date")
+        .reindex(index=assets, columns=dates)
+        .to_numpy()[keep_assets, history:]
     )
-
-    result = rfm.fit(mkt_df, returns)
-
-    print(result.vif.describe())
-
-    result.diagnostics["r2"].plot()
-    plt.show()
+    rfm = FundamentalFactorModel(factors).fit(returns_array, market_data)
+    rfm_diagnostics = RiskFactorDiagnostics(rfm.covariance, rfm.loadings)
+    print(rfm_diagnostics.portfolio_risk(rfm.returns))
