@@ -55,14 +55,14 @@ class RiskFactorModel(ABC):
 
     @fitted_property
     @abstractmethod
-    def factor_returns(self) -> np.ndarray | None: ...
+    def factor_returns(self) -> np.ndarray: ...
 
     @fitted_property
-    def residuals(self) -> np.ndarray | None:
+    def residuals(self) -> np.ndarray:
         return self.returns - self.loadings @ self.factor_returns
 
     @fitted_property
-    def covariance(self) -> np.ndarray | None:
+    def covariance(self) -> np.ndarray:
         factor_covariance = np.atleast_2d(np.cov(self.factor_returns, ddof=1))
         return self.loadings @ factor_covariance @ self.loadings.T + np.diag(
             np.broadcast_to(self.residual_variance, (self.num_assets,))
@@ -70,10 +70,10 @@ class RiskFactorModel(ABC):
 
     @fitted_property
     @abstractmethod
-    def loadings(self) -> np.ndarray | None: ...
+    def loadings(self) -> np.ndarray: ...
 
     @fitted_property
-    def residual_variance(self) -> float | np.ndarray | None:
+    def residual_variance(self) -> float | np.ndarray:
         return np.var(self.residuals, axis=1, ddof=1)
 
     @fitted_property
