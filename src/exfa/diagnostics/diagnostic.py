@@ -61,11 +61,36 @@ class RiskFactorDiagnostics:
         B1: np.ndarray,
         B2: np.ndarray,
     ) -> FactorSubspace:
-        Q1 = np.linalg.qr(B1, mode="reduced")[0]
-        Q2 = np.linalg.qr(B2, mode="reduced")[0]
+        """
+        Compare numerical column spaces using rank-aware orthonormal bases.
+
+        Discard singular values at or below eps * max(shape) * largest singular
+        value. Return min(rank(B1), rank(B2)) principal angles, as for full-rank
+        inputs. Zero-rank spaces are rejected because angle summaries are undefined.
+        Both loading matrices must be finite and have the same asset dimension.
+        """
+
+        first_loadings = np.asarray(B1, dtype=float)
+        second_loadings = np.asarray(B2, dtype=float)
+        if (
+            first_loadings.ndim != 2
+            or second_loadings.ndim != 2
+            or first_loadings.shape[0] != second_loadings.shape[0]
+        ):
+            raise ValueError("loadings must be matrices with the same asset dimension")
+
+        bases = []
+        for loadings in (first_loadings, second_loadings):
+            if not np.isfinite(loadings).all():
+                raise ValueError("loadings must contain only finite values")
+            left_vectors, singular_values, _ = np.linalg.svd(loadings, full_matrices=False)
+            if not singular_values.size or singular_values[0] == 0:
+                raise ValueError("loadings must have positive numerical rank")
+            tolerance = np.finfo(float).eps * max(loadings.shape) * singular_values[0]
+            bases.append(left_vectors[:, singular_values > tolerance])
 
         cosine = np.clip(
-            np.linalg.svd(Q1.T @ Q2, compute_uv=False),
+            np.linalg.svd(bases[0].T @ bases[1], compute_uv=False),
             0.0,
             1.0,
         )
