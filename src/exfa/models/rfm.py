@@ -42,9 +42,9 @@ class RiskFactorModel(ABC):
     """
 
     def __init__(self) -> None:
+        self._returns: np.ndarray | None = None
         self._factor_returns: np.ndarray | None = None
         self._residuals: np.ndarray | None = None
-        self._returns: np.ndarray | None = None
         self._covariance: np.ndarray | None = None
         self._loadings: np.ndarray | None = None
         self._residual_variance: float | np.ndarray | None = None
@@ -52,17 +52,6 @@ class RiskFactorModel(ABC):
     @fitted_property
     def returns(self) -> np.ndarray | None:
         return self._returns
-
-    @staticmethod
-    def _validate_returns(returns: np.ndarray) -> np.ndarray:
-        returns = np.asarray(returns, dtype=float)
-        if returns.ndim != 2 or returns.shape[0] < 1 or returns.shape[1] < 2:
-            raise ValueError(
-                "returns must have shape (assets, times) with at least one asset and two times"
-            )
-        if not np.isfinite(returns).all():
-            raise ValueError("returns must contain only finite values")
-        return returns
 
     @fitted_property
     def factor_returns(self) -> np.ndarray | None:
@@ -96,5 +85,20 @@ class RiskFactorModel(ABC):
     def num_factors(self) -> int:
         return self.loadings.shape[1]
 
+    @staticmethod
+    def _validate_returns(returns: np.ndarray) -> np.ndarray:
+        returns = np.asarray(returns, dtype=float)
+        if returns.ndim != 2 or returns.shape[0] < 1 or returns.shape[1] < 2:
+            raise ValueError(
+                "returns must have shape (assets, times) with at least one asset and two times"
+            )
+        if not np.isfinite(returns).all():
+            raise ValueError("returns must contain only finite values")
+        return returns
+
     @abstractmethod
-    def fit(self, *args, **kwargs) -> Self: ...
+    def _fit(self, returns: np.ndarray, *args, **kwargs) -> Self: ...
+
+    def fit(self, returns: np.ndarray, *args, **kwargs) -> Self:
+        self._returns = RiskFactorModel._validate_returns(returns)
+        return self._fit(returns, *args, **kwargs)

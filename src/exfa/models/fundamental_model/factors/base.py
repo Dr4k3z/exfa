@@ -1,17 +1,29 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import override
 
-import pandas as pd
+import numpy as np
 
 from .preprocessing import clean_factor
+
+MarketData = Mapping[str, np.ndarray]
+
+
+def get_feature(data: MarketData, name: str, shape: tuple[int, int]) -> np.ndarray:
+    """
+    Return a feature aligned to fitted times without copying static values.
+
+    Longer histories end at the same time as returns; their trailing columns
+    align with returns. Leading columns are available for rolling factors.
+    """
+
+    values = np.asarray(data[name])
+    return np.broadcast_to(values[:, None], shape) if values.ndim == 1 else values[:, -shape[1] :]
 
 
 class Factor(ABC):
     def __init__(self, name: str, impute: bool, winsorize: bool, standardize: bool) -> None:
         self.name = name
-
-        # Cleaning configuration
         self.impute = impute
         self.winsorize = winsorize
         self.standardize = standardize
@@ -28,26 +40,24 @@ class Factor(ABC):
     def include_in_vif(self) -> bool:
         return False
 
-    def validate_data(self, data: pd.DataFrame) -> None:
-        missing = [
-            feature for feature in self.required_features if feature not in data.columns
-        ]
-
+    def validate_data(self, data: MarketData, shape: tuple[int, int]) -> None:
+        missing = [name for name in self.required_features if name not in data]
         if missing:
             raise ValueError(f"{type(self).__name__} requires missing features: {missing}")
-
-        # NOTE: are we sure about this?
-        if not isinstance(data.index, pd.MultiIndex):
-            raise TypeError("Factor data must use a MultiIndex with levels ('date', 'asset').")
-
-        required_levels = {"date", "asset"}
-        missing_levels = required_levels - set(data.index.names)
-
-        if missing_levels:
-            raise ValueError(f"Factor data is missing index levels: {sorted(missing_levels)}")
+        for name in self.required_features:
+            values = np.asarray(data[name])
+            if not (
+                values.shape == (shape[0],)
+                or (
+                    values.ndim == 2 and values.shape[0] == shape[0] and values.shape[1] >= shape[1]
+                )
+            ):
+                raise ValueError(
+                    f"Feature {name!r} must have shape (assets,) or (assets, times), optionally with leading history"
+                )
 
     @abstractmethod
-    def compute(self, data: pd.DataFrame) -> pd.DataFrame: ...
+    def compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray: ...
 
     @override
     def __repr__(self) -> str:
@@ -55,12 +65,6 @@ class Factor(ABC):
 
 
 class ContinuousFactor(Factor):
-    def __init__(self, name: str, impute: bool, winsorize: bool, standardize: bool) -> None:
-        super().__init__(name, impute, winsorize, standardize)
-
-    @abstractmethod
-    def _compute(self, data: pd.DataFrame) -> pd.Series: ...
-
     @property
     @override
     def requires_constraint(self) -> bool:
@@ -71,21 +75,27 @@ class ContinuousFactor(Factor):
     def include_in_vif(self) -> bool:
         return True
 
+    @abstractmethod
+    def _compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray: ...
+
     @override
-    def compute(self, data: pd.DataFrame, clean: bool = True) -> pd.DataFrame:
-        self.validate_data(data)
-        loadings = self._compute(data)
-        if clean:
-            loadings = clean_factor(loadings, self.impute, self.winsorize, self.standardize)
-        return loadings.rename(self.name).to_frame()
+    def compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        self.validate_data(data, shape)
+        values = np.asarray(self._compute(data, shape), dtype=float)
+        if values.shape != shape:
+            raise ValueError(f"Factor {self.name!r} must produce (assets, times)")
+        return clean_factor(values, self.impute, self.winsorize, self.standardize)[:, None, :]
 
 
 class CategoricalFactor(Factor):
-    def __init__(self, name):
+    def __init__(self, name: str, column: str) -> None:
         super().__init__(name, False, False, False)
+        self.column = column
 
-    @abstractmethod
-    def _compute(self, data: pd.DataFrame) -> pd.DataFrame: ...
+    @property
+    @override
+    def required_features(self) -> Sequence[str]:
+        return (self.column,)
 
     @property
     @override
@@ -93,7 +103,10 @@ class CategoricalFactor(Factor):
         return True
 
     @override
-    def compute(self, data: pd.DataFrame) -> pd.DataFrame:
-        self.validate_data(data)
-        loadings = self._compute(data)
-        return loadings
+    def compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        self.validate_data(data, shape)
+        values = get_feature(data, self.column, shape)
+        if any(value is None or value != value for value in values.flat):
+            raise ValueError(f"Categorical feature {self.column!r} contains missing values")
+        categories = np.unique(values)
+        return (values[:, None, :] == categories[None, :, None]).astype(float)

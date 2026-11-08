@@ -1,63 +1,37 @@
 import numpy as np
-import pandas as pd
-
-
-def median_imputation(x: pd.Series) -> pd.Series:
-    x = x.astype(float)
-
-    median = x.median()
-    x = x.fillna(median)
-
-    if x.isna().all():
-        return pd.Series(np.nan, index=x.index)
-    return x
-
-
-def winsorization(
-    x: pd.Series, winsor_lower: float = 0.01, winsor_upper: float = 0.99
-) -> pd.Series:
-    lower = x.quantile(winsor_lower)
-    upper = x.quantile(winsor_upper)
-
-    x = x.clip(lower=lower, upper=upper)
-    return x
-
-
-def z_scoring(x: pd.Series) -> pd.Series:
-    mean = x.mean()
-    std = x.std(ddof=0)
-
-    if std == 0 or np.isnan(std):
-        return pd.Series(0.0, index=x.index)
-
-    return (x - mean) / std
 
 
 def clean_factor(
-    x: pd.Series,
+    values: np.ndarray,
     impute: bool = True,
     winsorize: bool = True,
     standardize: bool = True,
     winsor_lower: float = 0.01,
     winsor_upper: float = 0.99,
-) -> pd.Series:
-    def clean_cross_section(s: pd.Series) -> pd.Series:
+) -> np.ndarray:
+    """
+    Clean continuous loadings cross-sectionally, without mutating input arrays.
+
+    Entirely missing columns remain missing. No future observations are used.
+    """
+
+    if not 0 <= winsor_lower <= winsor_upper <= 1:
+        raise ValueError("Invalid winsorization quantiles")
+    if not (impute or winsorize or standardize):
+        return values
+    result = values.copy()
+    for time in range(result.shape[1]):
+        column = result[:, time]
+        valid = np.isfinite(column)
+        if not valid.any():
+            continue
         if impute:
-            s = median_imputation(s)
-
+            column[~valid] = np.median(column[valid])
+            valid = np.isfinite(column)
         if winsorize:
-            s = winsorization(
-                s,
-                winsor_lower=winsor_lower,
-                winsor_upper=winsor_upper,
-            )
-
+            lower, upper = np.quantile(column[valid], [winsor_lower, winsor_upper])
+            column[valid] = np.clip(column[valid], lower, upper)
         if standardize:
-            s = z_scoring(s)
-
-        return s
-
-    return x.groupby(
-        level="date",
-        group_keys=False,
-    ).apply(clean_cross_section)
+            std = np.std(column[valid])
+            column[valid] = (column[valid] - np.mean(column[valid])) / std if std > 0 else 0.0
+    return result
