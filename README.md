@@ -72,16 +72,27 @@ The NumPy diagnostic report evaluates the stored daily residuals and historical
 loadings, without refitting or substituting the last date's loadings:
 
 ```python
+from exfa import FundamentalFactorModel
 from exfa.diagnostics import compute_model_regression_report
+from exfa.models.fundamental_model.factors import CountryFactor, InterceptFactor, MomentumFactor
 
-model.fit(returns=returns, loadings=loadings, categorical_groups=[(1, 2)])
-report = compute_model_regression_report(model, continuous_columns=[3, 4])
+model = FundamentalFactorModel([
+    InterceptFactor(), CountryFactor(), MomentumFactor("momentum", window=20),
+])
+model.fit(returns=returns, market_data=market_data)
+# With two countries: intercept, country DE, country US, momentum.
+report = compute_model_regression_report(model, continuous_columns=[3])
 print(report.r2)                  # (times,), centered across assets each day
 print(report.vif)                 # (selected continuous columns, times)
 print(report.constraint_error)    # (times,), maximum absolute constraint error
 print(report.fitted_return_corr)  # (times,)
 print(report.n_obs, report.n_dropped, report.dropped_assets)
 ```
+
+`DailyRegressionReport` is a frozen dataclass with named metric attributes,
+rather than a tuple. Observation counts are properties derived from `num_assets`
+and `dropped_assets`; they are not stored separately. Use attribute access rather
+than tuple unpacking or positional report construction.
 
 Specify the continuous factor indices explicitly: exclude intercepts and complete
 categorical groups. An empty selection (the default) produces an empty VIF matrix.

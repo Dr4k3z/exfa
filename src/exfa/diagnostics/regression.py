@@ -1,5 +1,6 @@
 from collections.abc import Sequence
-from typing import NamedTuple, Protocol
+from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 
@@ -7,40 +8,40 @@ from exfa.models.fundamental_model.regression import CrossSectionalRegressionRes
 from exfa.models.fundamental_model.regression.wls import LinearConstraint
 
 
-class DailyRegressionReport(NamedTuple):
+@dataclass(frozen=True)
+class DailyRegressionReport:
     """
     Per-time regression metrics in input order, with VIF shaped (columns, times).
 
     Undefined metrics are NaN. Dropped assets are positional input row indices.
     continuous_columns identifies the factor rows of vif; labels remain external.
+    Observation counts are derived from num_assets and dropped_assets.
     """
 
     r2: np.ndarray
     fitted_return_corr: np.ndarray
     constraint_error: np.ndarray
-    n_obs: np.ndarray
-    n_dropped: np.ndarray
+    num_assets: int
     dropped_assets: tuple[tuple[int, ...], ...]
     vif: np.ndarray
     continuous_columns: tuple[int, ...]
 
+    @property
+    def n_dropped(self) -> np.ndarray:
+        return np.array([len(assets) for assets in self.dropped_assets], dtype=int)
+
+    @property
+    def n_obs(self) -> np.ndarray:
+        return self.num_assets - self.n_dropped
+
 
 class FittedRegressionModel(Protocol):
     """
-    Stored fitted values needed by the daily diagnostic adapter.
+    Canonical fitted state needed by the daily diagnostic adapter.
     """
 
     @property
     def returns(self) -> np.ndarray: ...
-
-    @property
-    def residuals(self) -> np.ndarray: ...
-
-    @property
-    def loadings_history(self) -> np.ndarray: ...
-
-    @property
-    def factor_returns(self) -> np.ndarray: ...
 
     @property
     def daily_results(self) -> tuple[CrossSectionalRegressionResult, ...]: ...
@@ -137,7 +138,6 @@ def compute_daily_regression_report(
     r2 = np.full(num_times, np.nan)
     correlations = np.full(num_times, np.nan)
     constraint_errors = np.zeros(num_times)
-    n_obs = np.zeros(num_times, dtype=int)
     dropped_assets = []
     vif = np.full((len(columns), num_times), np.nan)
     for time in range(num_times):
@@ -147,7 +147,6 @@ def compute_daily_regression_report(
             & np.isfinite(residuals[:, time])
             & np.isfinite(loadings).all(axis=1)
         )
-        n_obs[time] = np.count_nonzero(valid)
         dropped_assets.append(tuple(int(asset) for asset in np.flatnonzero(~valid)))
         actual = returns[valid, time]
         errors = residuals[valid, time]
@@ -172,14 +171,13 @@ def compute_daily_regression_report(
                 float(np.max(np.abs(violations))) if violations.size else 0.0
             )
     return DailyRegressionReport(
-        r2,
-        correlations,
-        constraint_errors,
-        n_obs,
-        num_assets - n_obs,
-        tuple(dropped_assets),
-        vif,
-        columns,
+        r2=r2,
+        fitted_return_corr=correlations,
+        constraint_error=constraint_errors,
+        num_assets=num_assets,
+        dropped_assets=tuple(dropped_assets),
+        vif=vif,
+        continuous_columns=columns,
     )
 
 
@@ -189,17 +187,21 @@ def compute_model_regression_report(
     continuous_columns: Sequence[int] = (),
 ) -> DailyRegressionReport:
     """
-    Build a daily report from a fitted fundamental model's stored arrays.
+    Build a daily report from a fitted fundamental model's daily results.
 
     This adapter preserves fitted-property pre-fit guards and uses the saved
     constraints and historical loadings. It does not refit the model.
     """
 
+    returns = model.returns
+    daily_results = model.daily_results
+    if len(daily_results) != returns.shape[1]:
+        raise ValueError("daily_results must contain one result per return time")
     return compute_daily_regression_report(
-        returns=model.returns,
-        residuals=model.residuals,
-        loadings_history=model.loadings_history,
-        factor_returns=model.factor_returns,
+        returns=returns,
+        residuals=np.column_stack([result.residuals for result in daily_results]),
+        loadings_history=np.stack([result.loadings for result in daily_results], axis=2),
+        factor_returns=np.column_stack([result.factor_returns for result in daily_results]),
         continuous_columns=continuous_columns,
-        constraints=tuple(result.constraint for result in model.daily_results),
+        constraints=tuple(result.constraint for result in daily_results),
     )

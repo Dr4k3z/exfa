@@ -2,6 +2,9 @@
 Test historical regression metrics independently of covariance diagnostics.
 """
 
+from collections.abc import Sequence
+from typing import NamedTuple, override
+
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose, assert_array_equal
@@ -9,7 +12,28 @@ from numpy.testing import assert_allclose, assert_array_equal
 from exfa import FundamentalFactorModel
 from exfa.diagnostics import compute_daily_regression_report, compute_model_regression_report
 from exfa.diagnostics.regression import compute_vif
+from exfa.models.fundamental_model.factors import CountryFactor, InterceptFactor
+from exfa.models.fundamental_model.factors.base import (
+    ContinuousFactor,
+    MarketData,
+    get_feature,
+)
+from exfa.models.fundamental_model.regression import CrossSectionalRegressionResult
 from exfa.models.fundamental_model.regression.wls import LinearConstraint
+
+
+class FeatureFactor(ContinuousFactor):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, False, False, False)
+
+    @property
+    @override
+    def required_features(self) -> Sequence[str]:
+        return (self.name,)
+
+    @override
+    def _compute(self, data: MarketData, shape: tuple[int, int]) -> np.ndarray:
+        return get_feature(data, self.name, shape)
 
 
 def test_daily_centered_r2_and_correlation():
@@ -38,7 +62,9 @@ def test_model_adapter_uses_stored_residuals_and_historical_loadings():
     history = rng.normal(size=(10, 2, 4))
     scores = rng.normal(size=(2, 4))
     returns = np.einsum("akt,kt->at", history, scores) + rng.normal(scale=0.1, size=(10, 4))
-    model = FundamentalFactorModel().fit(returns, history, min_obs=3)
+    model = FundamentalFactorModel([FeatureFactor("first"), FeatureFactor("second")]).fit(
+        returns, {"first": history[:, 0, :], "second": history[:, 1, :]}, min_obs=3
+    )
     report = compute_model_regression_report(model, continuous_columns=[0, 1])
     expected = 1 - np.sum(model.residuals**2, axis=0) / np.sum(
         (returns - returns.mean(axis=0)) ** 2, axis=0
@@ -64,8 +90,16 @@ def test_constraints_and_explicit_continuous_selection():
     )
     scores = np.array([[1, 2, 3], [0.3, 0.1, 0.2], [-0.3, -0.1, -0.2], [0.2, 0.4, -0.1]])
     returns = np.einsum("akt,kt->at", history, scores)
-    model = FundamentalFactorModel().fit(
-        returns, history, min_obs=3, categorical_groups=[(1, 2)]
+    model = FundamentalFactorModel(
+        [
+            InterceptFactor(),
+            CountryFactor(),
+            FeatureFactor("signal"),
+        ]
+    ).fit(
+        returns,
+        {"country": np.array(["DE"] * 3 + ["US"] * 3), "signal": history[:, 3, :]},
+        min_obs=3,
     )
     report = compute_model_regression_report(model, continuous_columns=[3])
     assert_allclose(report.r2, 1)
@@ -174,3 +208,37 @@ def test_negative_r2_and_undefined_constraint_are_not_hidden():
     )
     assert report.r2[0] == pytest.approx(-149.0)
     assert np.isnan(report.constraint_error[0])
+
+
+class RegressionSnapshot(NamedTuple):
+    returns: np.ndarray
+    daily_results: tuple[CrossSectionalRegressionResult, ...]
+
+
+def test_adapter_accepts_only_canonical_fitted_state() -> None:
+    model = FundamentalFactorModel([InterceptFactor()]).fit(
+        np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]]), {}, min_obs=2
+    )
+    snapshot = RegressionSnapshot(model.returns, model.daily_results)
+    expected = compute_model_regression_report(model)
+    actual = compute_model_regression_report(snapshot)
+    assert_allclose(actual.r2, expected.r2)
+    assert_array_equal(actual.n_obs, expected.n_obs)
+    with pytest.raises(ValueError, match="one result per return time"):
+        compute_model_regression_report(
+            RegressionSnapshot(snapshot.returns, snapshot.daily_results[:1])
+        )
+
+
+def test_report_counts_are_derived_from_dropped_rows() -> None:
+    returns = np.array([[np.nan, 1.0], [2.0, np.nan], [3.0, np.nan]])
+    report = compute_daily_regression_report(
+        returns, np.zeros((3, 2)), np.ones((3, 1, 2)), np.ones((1, 2))
+    )
+    assert report.num_assets == 3
+    assert report.dropped_assets == ((0,), (1, 2))
+    assert_array_equal(report.n_dropped, [1, 2])
+    assert_array_equal(report.n_obs, [2, 1])
+    report.n_obs[:] = 999
+    report.n_dropped[:] = 999
+    assert_array_equal(report.n_obs + report.n_dropped, [3, 3])
