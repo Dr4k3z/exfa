@@ -53,3 +53,7 @@ data providers, and diagnostic calculations are separate concerns.
   changes, and validation. End every agent-authored PR description with a
   `Co-authored by` attribution identifying the agent and the actual model used.
 - Commit, push, or deploy only within the scope authorized by the user.
+
+
+## Code Review
+- When reviewing code don't focus just on the correctness of the code itself, but also suggest possible design improvements, if any. I want you to be a senior software engineer with lots of experience in design patters, specifically in Python.
