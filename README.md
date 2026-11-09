@@ -38,7 +38,7 @@ sorted pandas dataframes with a unique `(date, asset)` MultiIndex. A
 columns. Every data-fetching method uses the same selected adapter.
 
 ```python
-from datetime import date
+from datetime import date as Date
 
 from exfa import LsegDataProvider, PriceField
 
@@ -46,8 +46,8 @@ from exfa import LsegDataProvider, PriceField
 with LsegDataProvider() as lseg:
     prices = lseg.get_prices(
         assets=[".STOXX50E", "ENI.MI"],
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 12, 31),
+        start_date=Date(2024, 1, 1),
+        end_date=Date(2024, 12, 31),
         fields=[PriceField.CLOSE, PriceField.VOLUME],
     )
 
@@ -55,8 +55,8 @@ with LsegDataProvider() as lseg:
         assets=[".STOXX50E", "ENI.MI"],
         field="TR.CompanyMarketCap",
         name="market_cap",
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 12, 31),
+        start_date=Date(2024, 1, 1),
+        end_date=Date(2024, 12, 31),
     )
 
 panel = prices.join(market_cap, how="left")
@@ -72,16 +72,16 @@ method.
 ### Choose an output adapter
 
 ```python
-from datetime import date
+from datetime import date as Date
 from exfa import LsegDataProvider, PandasAdapter, PolarsAdapter
 
 with LsegDataProvider(adapter=PolarsAdapter()) as lseg:
     classifications = lseg.get_trbc(["ENI.MI", "VOD.L"])
     prices = lseg.get_prices(
-        ["ENI.MI", "VOD.L"], date(2024, 1, 1), date(2024, 12, 31),
+        ["ENI.MI", "VOD.L"], Date(2024, 1, 1), Date(2024, 12, 31),
     )
     market_cap = lseg.get_market_cap(
-        ["ENI.MI", "VOD.L"], date(2024, 1, 1), date(2024, 12, 31),
+        ["ENI.MI", "VOD.L"], Date(2024, 1, 1), Date(2024, 12, 31),
     )
 
 panel = prices.join(market_cap, on=["date", "asset"], how="left", validate="1:1")

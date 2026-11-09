@@ -33,6 +33,9 @@ data providers, and diagnostic calculations are separate concerns.
 - Ask for permission before writing code or changing existing file contents unless
   the user has already approved those changes. Moving files alone does not require
   content-edit approval.
+- To handle dates, datetimes and timedeltas always use the native python module `datetime`
+  which must always be imported with the following pattern `from datetime import date as Date`,
+  same for `DateTime` and `TimeDelta`.
 
 ## Deployment and commit conventions
 

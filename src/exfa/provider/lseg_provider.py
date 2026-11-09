@@ -4,8 +4,9 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 from datetime import date as Date
+from datetime import datetime as DateTime
 from enum import StrEnum
 from typing import Any, Self, cast, overload
 
@@ -439,16 +440,16 @@ def _rename_columns(
     return result
 
 
-def _parse_date(value: object) -> datetime | None:
+def _parse_date(value: object) -> DateTime | None:
     if value is None or value == "":
         return None
-    if isinstance(value, datetime):
+    if isinstance(value, DateTime):
         parsed = value
     elif isinstance(value, Date):
-        parsed = datetime.combine(value, datetime.min.time())
+        parsed = DateTime.combine(value, DateTime.min.time())
     elif isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = DateTime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError as error:
             raise LsegSchemaError(f"Invalid LSEG date: {value!r}") from error
     else:
@@ -512,7 +513,7 @@ def _as_timeseries(table: TableData) -> dict[str, list[object]]:
     if not {"date", "asset"}.issubset(table):
         raise LsegSchemaError("Historical data must contain date and asset columns")
     value_columns = [column for column in table if column not in {"date", "asset"}]
-    observations: dict[tuple[datetime, str], tuple[object, ...]] = {}
+    observations: dict[tuple[DateTime, str], tuple[object, ...]] = {}
     for row in zip(*table.values(), strict=True):
         record = dict(zip(table, row, strict=True))
         date = _parse_date(record["date"])
