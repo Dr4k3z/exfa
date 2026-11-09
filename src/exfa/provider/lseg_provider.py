@@ -13,6 +13,8 @@ import pandas as pd
 from lseg.data.content import historical_pricing
 from lseg.data.session import Session
 
+from .adapters import Adapter
+
 
 class LsegProviderError(RuntimeError):
     """
@@ -76,7 +78,7 @@ class LsegConfig:
         )
 
 
-class LsegDataProvider:
+class LsegDataProvider[T]:
     """
     LSEG ingestion client with a stable time-series contract.
 
@@ -84,9 +86,10 @@ class LsegDataProvider:
     Static/reference methods return ordinary tabular dataframes.
     """
 
-    def __init__(self, config: LsegConfig | None = None) -> None:
+    def __init__(self, config: LsegConfig | None = None, adapter: Adapter[T] | None = None) -> None:
         self.config = config or LsegConfig.from_env()
         self._session: Session | None = None
+        self._adapter = adapter
 
     def __enter__(self) -> Self:
         return self.open()
@@ -333,15 +336,11 @@ def _normalize_price(frame: pd.DataFrame, assets: Sequence[str], field: str) -> 
 def _normalize_tr_timeseries(frame: pd.DataFrame, name: str) -> pd.DataFrame:
     frame = frame.copy()
     frame.columns = [_snake_case(str(column)) for column in frame.columns]
-    asset = next(
-        (column for column in frame if column in {"asset", "instrument", "ric"}), None
-    )
+    asset = next((column for column in frame if column in {"asset", "instrument", "ric"}), None)
     dates = [column for column in frame if column == "date" or column.endswith("_date")]
     values = [column for column in frame if column != asset and column not in dates]
     if asset is None or not dates or len(values) != 1:
-        raise LsegSchemaError(
-            f"Cannot identify date, asset and value in {list(frame.columns)}"
-        )
+        raise LsegSchemaError(f"Cannot identify date, asset and value in {list(frame.columns)}")
     return _as_timeseries(
         frame.rename(columns={asset: "asset", dates[0]: "date", values[0]: name})[
             ["date", "asset", name]
