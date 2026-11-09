@@ -16,6 +16,10 @@ data providers, and diagnostic calculations are separate concerns.
   returns are `(factors, times)`.
 - Keep model estimation NumPy-based. Perform pandas data preparation separately.
 - Use type annotations and preserve precise types through decorators and descriptors.
+- For forward references and annotation-only imports, use
+  `from __future__ import annotations` and write types without quotation marks
+  (for example, `pd.DataFrame`, not `"pd.DataFrame"`). Keep types needed by
+  runtime expressions, including evaluated generic defaults, importable at runtime.
 - Classes should store only the minimal attributes they require. Keep a single
   source of truth; do not separately store values derivable from existing state,
   such as factor labels, column indices, counts, or other metadata. Expose derived

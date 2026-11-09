@@ -7,16 +7,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from datetime import date as Date
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self, cast, overload
+from typing import Any, Self, cast, overload
 
 import lseg.data as ld
+import pandas as pd
 from lseg.data.content import fundamental_and_reference, historical_pricing
 from lseg.data.session import Session
 
 from .adapters import Adapter, PandasAdapter, TableData
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 class LsegProviderError(RuntimeError):
@@ -81,7 +79,7 @@ class LsegConfig:
         )
 
 
-class LsegDataProvider[T = "pd.DataFrame"]:
+class LsegDataProvider[T = pd.DataFrame]:
     """
     LSEG ingestion client with a stable time-series contract.
 
