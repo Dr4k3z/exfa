@@ -10,7 +10,25 @@ data providers, and diagnostic calculations are separate concerns.
 - Use clear, descriptive names. Functions and methods should start with a verb
   describing their action, such as `compute_loadings` or `validate_returns`.
   Properties describe values and use nouns, such as `loadings` or `covariance`.
+- Name `get` and `request` functions and methods in the plural. For string-valued
+  selections, accept `str | Sequence[str]` whenever practical, or `Sequence[str]`
+  when a collection is required. Normalize a single string as one item, never
+  as a sequence of characters. Avoid separate singular and plural entry points.
+- Functions and methods prefixed with `get_` always return pandas `DataFrame`
+  objects processed by the adapter. Functions and methods prefixed with
+  `request_` return raw data.
 - Use `loadings` consistently rather than `exposures`.
+- Prefer public, descriptive function and method names. Avoid leading-underscore
+  helpers by default; use them only when a concrete implementation boundary
+  justifies keeping an operation internal. Python's privacy conventions are useful
+  sometimes, but should not drive unnecessary restrictions or fragmentation.
+- Balance instance methods, static methods, and module-level functions around
+  cohesive responsibilities. Keep operations that use instance state on the
+  instance. Use static methods sparingly for operations closely tied to a class's
+  purpose; do not turn classes into collections of unrelated static helpers.
+  Put reusable, context-independent operations in focused utility modules. Avoid
+  long chains of small standalone helpers and generic utility dumping grounds;
+  extract a function when it expresses a meaningful operation or enables reuse.
 - Keep public APIs and array orientations consistent across models: returns and
   residuals are `(assets, times)`, loadings are `(assets, factors)`, and factor
   returns are `(factors, times)`.
@@ -23,7 +41,7 @@ data providers, and diagnostic calculations are separate concerns.
 - Classes should store only the minimal attributes they require. Keep a single
   source of truth; do not separately store values derivable from existing state,
   such as factor labels, column indices, counts, or other metadata. Expose derived
-  values through properties or descriptive methods such as `get_factor_labels()`.
+  values through properties or descriptive methods such as `compute_factor_labels()`.
 - Use dataclasses only when they suit a simple record of related data. Do not use
   them by default or introduce unnecessary wrappers and abstractions.
 - Put opening and closing docstring quotes on separate lines, with the text
@@ -38,6 +56,11 @@ data providers, and diagnostic calculations are separate concerns.
   same for `DateTime` and `TimeDelta`.
 
 ## Deployment and commit conventions
+
+- When you want to run code, for instance the file `main.py`, do so by using the current `.venv` and calling
+  ```sh
+  uv run main.py
+  ```
 
 - At the end of every code-writing task, run Ruff and ty over the whole repository,
   not just changed files:

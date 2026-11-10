@@ -13,24 +13,13 @@ from typing import Any, Self, cast, overload
 import lseg.data as ld
 import pandas as pd
 from lseg.data.content import fundamental_and_reference, historical_pricing
+from lseg.data.errors import EndpointError
 from lseg.data.session import Session
 
-from .adapters import Adapter, PandasAdapter, TableData
+from .adapters import Adapter, PandasAdapter
 
 
-class LsegProviderError(RuntimeError):
-    """
-    Base error raised by the LSEG ingestion client.
-    """
-
-
-class LsegSessionError(LsegProviderError):
-    """
-    Raised when an extraction is attempted without an open session.
-    """
-
-
-class LsegSchemaError(LsegProviderError):
+class LsegSchemaError(ValueError):
     """
     Raised when LSEG returns data that violates the provider contract.
     """
@@ -93,16 +82,13 @@ class LsegDataProvider[T = pd.DataFrame]:
     def __init__(
         self: LsegDataProvider[pd.DataFrame],
         config: LsegConfig | None = None,
-        *,
         adapter: None = None,
     ) -> None: ...
 
     @overload
     def __init__(self, config: LsegConfig | None = None, *, adapter: Adapter[T]) -> None: ...
 
-    def __init__(
-        self, config: LsegConfig | None = None, *, adapter: Adapter[T] | None = None
-    ) -> None:
+    def __init__(self, config: LsegConfig | None = None, adapter: Adapter[T] | None = None) -> None:
         self.config = config or LsegConfig.from_env()
         self._session: Session | None = None
         self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter())
@@ -114,13 +100,9 @@ class LsegDataProvider[T = pd.DataFrame]:
         self.close()
 
     @property
-    def is_open(self) -> bool:
-        return self._session is not None
-
-    @property
     def session(self) -> Session:
         if self._session is None:
-            raise LsegSessionError("Use the provider as a context manager or call open().")
+            raise RuntimeError("Use the provider as a context manager or call open().")
         return self._session
 
     def open(self) -> Self:
@@ -137,46 +119,81 @@ class LsegDataProvider[T = pd.DataFrame]:
             self._session.close()
             self._session = None
 
-    def get_data(
-        self,
-        assets: str | Sequence[str],
-        fields: str | Sequence[str],
-        parameters: str | dict[str, Any] | None = None,
-    ) -> T:
-        """
-        Fetch fundamental/reference fields with LSEG column titles and adapt the output.
-        """
+    @staticmethod
+    def normalize_asset_names(asset_names: str | Sequence[str]) -> list[str]:
+        return [asset_names] if isinstance(asset_names, str) else list(dict.fromkeys(asset_names))
 
-        return self._adapter.shape_raw_data(
-            self._request_reference_data(assets, fields, parameters)
-        )
-
-    def _request_reference_data(
+    def request_reference_data(
         self,
         assets: str | Sequence[str],
         fields: str | Sequence[str],
         parameters: str | dict[str, Any] | None = None,
     ) -> dict[str, list[object]]:
+        """
+        Fetch and parse reference data without applying the output adapter.
+        """
+
         if isinstance(parameters, str):
             key, separator, value = parameters.partition("=")
             if not separator or not key.strip():
                 raise ValueError("String parameters must contain a key=value pair")
             parameters = {key.strip(): value.strip()}
         response = fundamental_and_reference.Definition(
-            universe=_assets(assets),
+            universe=self.normalize_asset_names(assets),
             fields=[fields] if isinstance(fields, str) else list(fields),
             parameters=parameters,
         ).get_data(session=self.session)
         if not response.is_success or response.errors:
-            raise LsegProviderError(f"LSEG reference request failed: {response.errors}")
-        return _parse_raw_table(response.data.raw)
+            raise EndpointError(message=f"LSEG reference request failed: {response.errors}")
+        return parse_raw_table(response.data.raw)
+
+    def request_timeseries_fields(
+        self,
+        assets: str | Sequence[str],
+        fields: str | Sequence[str] | Mapping[str, str],
+        start_date: Date,
+        end_date: Date,
+        frequency: str = "D",
+        currency: str | None = None,
+    ) -> dict[str, list[object]]:
+        """
+        Fetch fields independently and outer-join their observation dates.
+
+        Strings and sequences derive output names from field identifiers.
+        A mapping supplies explicit field-to-output-column names.
+        """
+
+        items: list[tuple[str, str]]
+        if isinstance(fields, Mapping):
+            items = [(str(field), str(name)) for field, name in fields.items()]
+        else:
+            requested = [fields] if isinstance(fields, str) else fields
+            items = [(field, normalize_field_name(field)) for field in requested]
+        if not items:
+            raise ValueError("At least one time-series field is required.")
+
+        parameters: dict[str, Any] = {
+            "SDate": start_date.isoformat(),
+            "EDate": end_date.isoformat(),
+            "Frq": frequency,
+        }
+        if currency is not None:
+            parameters["Curn"] = currency
+        series = [
+            normalize_reference_timeseries(
+                self.request_reference_data(assets, [f"{field}.date", field], parameters),
+                name,
+            )
+            for field, name in items
+        ]
+        return join_timeseries(series)
 
     def get_trbc(self, assets: str | Sequence[str]) -> T:
         """
         Return static country and TRBC classifications, one row per asset.
         """
 
-        table = self._request_reference_data(
+        table = self.request_reference_data(
             assets,
             [
                 "TR.HeadquartersCountry",
@@ -187,16 +204,14 @@ class LsegDataProvider[T = pd.DataFrame]:
                 "TR.TRBCActivity",
             ],
         )
-        table = _rename_columns(
+        table = rename_columns(
             table,
             {"Instrument": "asset", "instrument": "asset", "RIC": "asset", "ric": "asset"},
             normalize=True,
         )
         if "asset" not in table:
             raise LsegSchemaError("Reference data must identify the asset")
-        positions = sorted(
-            range(len(table["asset"])), key=lambda row: str(table["asset"][row])
-        )
+        positions = sorted(range(len(table["asset"])), key=lambda row: str(table["asset"][row]))
         return self._adapter.shape_raw_data(
             {name: [values[row] for row in positions] for name, values in table.items()}
         )
@@ -206,16 +221,14 @@ class LsegDataProvider[T = pd.DataFrame]:
         assets: str | Sequence[str],
         start_date: Date,
         end_date: Date,
-        fields: Sequence[PriceField | str] = DEFAULT_PRICE_FIELDS,
+        fields: str | Sequence[PriceField | str] = DEFAULT_PRICE_FIELDS,
     ) -> T:
         """
         Return historical pricing indexed by ``(date, asset)``.
         """
 
-        _ = self.session
-        universe = _assets(assets)
-        _date_range(start_date, end_date)
-        requested = list(dict.fromkeys(str(field) for field in fields))
+        universe = self.normalize_asset_names(assets)
+        requested = list(dict.fromkeys([fields] if isinstance(fields, str) else fields))
 
         series: list[dict[str, list[object]]] = []
         for field in requested:
@@ -226,99 +239,33 @@ class LsegDataProvider[T = pd.DataFrame]:
                 fields=[field],
             ).get_data(session=self.session)
             if not response.is_success or response.errors:
-                raise LsegProviderError(f"LSEG pricing request failed: {response.errors}")
-            series.append(_normalize_prices(response.data.raw, universe, field))
+                raise EndpointError(message=f"LSEG pricing request failed: {response.errors}")
+            series.append(normalize_prices(response.data.raw, universe, field))
 
         if not series:
             raise ValueError("At least one price field is required.")
-        return self._adapter.shape_raw_data(_join_timeseries(series), index=("date", "asset"))
-
-    def get_timeseries_field(
-        self,
-        assets: str | Sequence[str],
-        field: str,
-        start_date: Date,
-        end_date: Date,
-        *,
-        name: str | None = None,
-        frequency: str = "D",
-        currency: str | None = None,
-    ) -> T:
-        """
-        Fetch one TR value/date pair as a raw observed time series.
-        """
-
-        table = self._request_timeseries_field(
-            assets,
-            field,
-            start_date,
-            end_date,
-            name=name or _field_name(field),
-            frequency=frequency,
-            currency=currency,
-        )
-        return self._adapter.shape_raw_data(table, index=("date", "asset"))
-
-    def _request_timeseries_field(
-        self,
-        assets: str | Sequence[str],
-        field: str,
-        start_date: Date,
-        end_date: Date,
-        *,
-        name: str,
-        frequency: str,
-        currency: str | None,
-    ) -> dict[str, list[object]]:
-        _date_range(start_date, end_date)
-        parameters: dict[str, Any] = {
-            "SDate": start_date.isoformat(),
-            "EDate": end_date.isoformat(),
-            "Frq": frequency,
-        }
-        if currency is not None:
-            parameters["Curn"] = currency
-        return _normalize_tr_timeseries(
-            self._request_reference_data(assets, [f"{field}.date", field], parameters), name
-        )
+        return self._adapter.shape_raw_data(join_timeseries(series), index=("date", "asset"))
 
     def get_timeseries_fields(
         self,
         assets: str | Sequence[str],
-        fields: Sequence[str] | Mapping[str, str],
+        fields: str | Sequence[str] | Mapping[str, str],
         start_date: Date,
         end_date: Date,
-        *,
         frequency: str = "D",
         currency: str | None = None,
     ) -> T:
         """
-        Fetch fields independently and outer-join their observation dates.
+        Fetch one or more reference time series through the selected adapter.
 
-        A mapping supplies ``LSEG field -> output column`` names. A sequence
-        derives output names from the LSEG field identifiers.
+        A mapping supplies field-to-output-column names. Strings and sequences
+        derive output names from the LSEG field identifiers.
         """
 
-        items: list[tuple[str, str]]
-        if isinstance(fields, Mapping):
-            items = [(str(field), str(name)) for field, name in fields.items()]
-        else:
-            items = [(field, _field_name(field)) for field in fields]
-        series = [
-            self._request_timeseries_field(
-                assets,
-                field,
-                start_date,
-                end_date,
-                name=name,
-                frequency=frequency,
-                currency=currency,
-            )
-            for field, name in items
-        ]
-        if not series:
-            raise ValueError("At least one time-series field is required.")
-        return self._adapter.shape_raw_data(_join_timeseries(series), index=("date", "asset"))
+        table = self.request_timeseries_fields(
+            assets, fields, start_date, end_date, frequency=frequency, currency=currency
+        )
+        return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
     def get_market_cap(
         self,
@@ -327,24 +274,22 @@ class LsegDataProvider[T = pd.DataFrame]:
         end_date: Date,
         currency: str | None = None,
     ) -> T:
-        return self.get_timeseries_field(
+        return self.get_timeseries_fields(
             assets,
-            "TR.CompanyMarketCap",
+            {"TR.CompanyMarketCap": "market_cap"},
             start_date,
             end_date,
-            name="market_cap",
             currency=currency,
         )
 
     def get_shares_outstanding(
         self, assets: str | Sequence[str], start_date: Date, end_date: Date
     ) -> T:
-        return self.get_timeseries_field(
+        return self.get_timeseries_fields(
             assets,
-            "TR.SharesOutstanding",
+            {"TR.SharesOutstanding": "shares_outstanding"},
             start_date,
             end_date,
-            name="shares_outstanding",
         )
 
     def get_value_fundamentals(
@@ -368,25 +313,20 @@ class LsegDataProvider[T = pd.DataFrame]:
         )
 
 
-def _assets(assets: str | Sequence[str]) -> list[str]:
-    return [assets] if isinstance(assets, str) else list(dict.fromkeys(assets))
-
-
-def _date_range(start: Date, end: Date) -> None:
-    if start > end:
-        raise ValueError(f"start ({start}) must be on or before end ({end}).")
-
-
-def _field_name(field: str) -> str:
-    return _snake_case(field.removeprefix("TR."))
-
-
-def _snake_case(value: str) -> str:
+def to_snake_case(value: str) -> str:
     value = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
     return re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
 
 
-def _parse_raw_table(raw_data: object) -> dict[str, list[object]]:
+def normalize_field_name(field: str) -> str:
+    """
+    Convert an LSEG field identifier to an output column name.
+    """
+
+    return to_snake_case(field.removeprefix("TR."))
+
+
+def parse_raw_table(raw_data: object) -> dict[str, list[object]]:
     """
     Decode the content API's RDP or UDF headers/data JSON into columns.
     """
@@ -395,7 +335,7 @@ def _parse_raw_table(raw_data: object) -> dict[str, list[object]]:
         raise LsegSchemaError("Expected an LSEG JSON object with headers and data")
     error = raw_data.get("error")
     if error:
-        raise LsegProviderError(f"LSEG returned an error: {error}")
+        raise EndpointError(message=f"LSEG returned an error: {error}")
     headers = raw_data.get("headers")
     rows = raw_data.get("data")
     if not isinstance(headers, list) or not isinstance(rows, list):
@@ -422,25 +362,33 @@ def _parse_raw_table(raw_data: object) -> dict[str, list[object]]:
         if not isinstance(row, list) or len(row) != len(names):
             raise LsegSchemaError("LSEG data rows must match the header width")
         for name, value in zip(names, row, strict=True):
-            table[name].append(_parse_date(value) if name in date_columns else value)
+            table[name].append(parse_date(value) if name in date_columns else value)
     return table
 
 
-def _rename_columns(
-    table: TableData, names: Mapping[str, str], *, normalize: bool = False
+def rename_columns(
+    table: Mapping[str, Sequence[object]], names: Mapping[str, str], normalize: bool = False
 ) -> dict[str, list[object]]:
+    """
+    Rename columns and optionally normalize their titles, rejecting collisions.
+    """
+
     result = {}
     for name, values in table.items():
         output_name = names.get(name, name)
         if normalize:
-            output_name = _snake_case(output_name)
+            output_name = to_snake_case(output_name)
         if output_name in result:
             raise LsegSchemaError(f"Duplicate output column: {output_name!r}")
         result[output_name] = list(values)
     return result
 
 
-def _parse_date(value: object) -> DateTime | None:
+def parse_date(value: object) -> DateTime | None:
+    """
+    Parse an LSEG date value and convert aware timestamps to naive UTC.
+    """
+
     if value is None or value == "":
         return None
     if isinstance(value, DateTime):
@@ -449,7 +397,7 @@ def _parse_date(value: object) -> DateTime | None:
         parsed = DateTime.combine(value, DateTime.min.time())
     elif isinstance(value, str):
         try:
-            parsed = DateTime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = DateTime.fromisoformat(value)
         except ValueError as error:
             raise LsegSchemaError(f"Invalid LSEG date: {value!r}") from error
     else:
@@ -457,34 +405,42 @@ def _parse_date(value: object) -> DateTime | None:
     return parsed.astimezone(UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
 
 
-def _normalize_tr_timeseries(table: TableData, name: str) -> dict[str, list[object]]:
-    table = _rename_columns(table, {}, normalize=True)
-    asset = next(
-        (column for column in table if column in {"asset", "instrument", "ric"}), None
-    )
+def normalize_reference_timeseries(
+    table: Mapping[str, Sequence[object]], name: str
+) -> dict[str, list[object]]:
+    """
+    Identify the reference date, asset, and value columns and normalize observations.
+    """
+
+    table = rename_columns(table, {}, normalize=True)
+    asset = next((column for column in table if column in {"asset", "instrument", "ric"}), None)
     dates = [column for column in table if column == "date" or column.endswith("_date")]
     values = [column for column in table if column != asset and column not in dates]
     if asset is None or len(dates) != 1 or len(values) != 1:
         raise LsegSchemaError(f"Cannot identify date, asset and value in {list(table)}")
     if not name or name in {"date", "asset"}:
         raise LsegSchemaError("Time-series value names must not shadow date or asset")
-    return _as_timeseries(
+    return normalize_timeseries(
         {"date": table[dates[0]], "asset": table[asset], name: table[values[0]]}
     )
 
 
-def _normalize_prices(
+def normalize_prices(
     raw_data: object, assets: Sequence[str], field: str
 ) -> dict[str, list[object]]:
+    """
+    Combine historical pricing payloads into normalized observations for one field.
+    """
+
     payloads = raw_data if isinstance(raw_data, list) else [raw_data]
     name = next(
         (member.name.lower() for member in PriceField if member.value == field),
-        _field_name(field),
+        normalize_field_name(field),
     )
     tables = []
     for payload in payloads:
-        table = _parse_raw_table(payload)
-        table = _rename_columns(table, {field: name}, normalize=True)
+        table = parse_raw_table(payload)
+        table = rename_columns(table, {field: name}, normalize=True)
         if name not in table:
             raise LsegSchemaError(f"Pricing response does not contain field {field!r}")
         if "date_time" in table and "date" not in table:
@@ -502,21 +458,26 @@ def _normalize_prices(
         if "date" not in table:
             raise LsegSchemaError("Pricing response must identify its dates")
         tables.append({"date": table["date"], "asset": table["asset"], name: table[name]})
-    combined: dict[str, list[object]] = {"date": [], "asset": [], name: []}
-    for table in tables:
-        for column in combined:
-            combined[column].extend(table[column])
-    return _as_timeseries(combined)
+
+    combined = {
+        column: [value for table in tables for value in table[column]]
+        for column in ("date", "asset", name)
+    }
+    return normalize_timeseries(combined)
 
 
-def _as_timeseries(table: TableData) -> dict[str, list[object]]:
+def normalize_timeseries(table: Mapping[str, Sequence[object]]) -> dict[str, list[object]]:
+    """
+    Sort observations, remove empty values, and reject conflicting date and asset keys.
+    """
+
     if not {"date", "asset"}.issubset(table):
         raise LsegSchemaError("Historical data must contain date and asset columns")
     value_columns = [column for column in table if column not in {"date", "asset"}]
     observations: dict[tuple[DateTime, str], tuple[object, ...]] = {}
     for row in zip(*table.values(), strict=True):
         record = dict(zip(table, row, strict=True))
-        date = _parse_date(record["date"])
+        date = parse_date(record["date"])
         asset = record["asset"]
         if date is None or asset is None:
             continue
@@ -542,7 +503,11 @@ def _as_timeseries(table: TableData) -> dict[str, list[object]]:
     return result
 
 
-def _join_timeseries(frames: Sequence[TableData]) -> dict[str, list[object]]:
+def join_timeseries(frames: Sequence[Mapping[str, Sequence[object]]]) -> dict[str, list[object]]:
+    """
+    Outer-join normalized series by date and asset, rejecting overlapping value columns.
+    """
+
     columns: list[str] = []
     observations: dict[tuple[object, object], dict[str, object]] = {}
     for frame in frames:
@@ -564,4 +529,4 @@ def _join_timeseries(frames: Sequence[TableData]) -> dict[str, list[object]]:
         result["asset"].append(asset)
         for column in columns:
             result[column].append(record.get(column))
-    return _as_timeseries(result)
+    return normalize_timeseries(result)

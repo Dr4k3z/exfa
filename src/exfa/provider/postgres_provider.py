@@ -1,24 +1,38 @@
-import pandas as pd
+from typing import TYPE_CHECKING, cast, overload
+
 import psycopg
 
-from .adapters import Adapter
+from .adapters import Adapter, PandasAdapter
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
-class PostgresProvider[T]:
+class PostgresProvider[T = pd.DataFrame]:
+    @overload
+    def __init__(
+        self: PostgresProvider[pd.DataFrame], verbose: bool = False, adapter: None = None
+    ): ...
+
+    @overload
+    def __init__(self, verbose: bool = False, *, adapter: Adapter[T]) -> None: ...
+
     def __init__(self, verbose: bool = False, adapter: Adapter[T] | None = None) -> None:
         self._raw_connection = psycopg.raw_cursor
-        self._adapter = adapter
+        self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter)
 
-    def get_equities(self, names: str | list[str] | None = None) -> pd.DataFrame:
+    def get_equities(self, names: str | list[str] | None = None) -> T:
         """
         docstring
         """
 
-        return pd.DataFrame()
+        raw_data = {}
+        return self._adapter.shape_raw_data(raw_data)
 
-    def get_historical_prices(self, names: str | list[str] | None = None) -> pd.DataFrame:
+    def get_historical_prices(self, names: str | list[str] | None = None) -> T:
         """
         docstring
         """
 
-        return pd.DataFrame()
+        raw_data = {}
+        return self._adapter.shape_raw_data(raw_data)

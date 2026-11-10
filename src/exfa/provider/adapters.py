@@ -13,7 +13,7 @@ type TableData = Mapping[str, Sequence[object]]
 
 
 class Adapter[T](Protocol):
-    def shape_raw_data(self, raw_data: TableData, *, index: Sequence[str] = ()) -> T:
+    def shape_raw_data(self, raw_data: TableData, index: Sequence[str] = ()) -> T:
         """
         Construct an output table from columns, optionally identifying historical keys.
         """
@@ -22,9 +22,7 @@ class Adapter[T](Protocol):
 
 
 class PandasAdapter:
-    def shape_raw_data(
-        self, raw_data: TableData, *, index: Sequence[str] = ()
-    ) -> pd.DataFrame:
+    def shape_raw_data(self, raw_data: TableData, index: Sequence[str] = ()) -> pd.DataFrame:
         """
         Build pandas output, using a MultiIndex for historical date/asset keys.
         """
@@ -38,9 +36,7 @@ class PandasAdapter:
 
 
 class PolarsAdapter:
-    def shape_raw_data(
-        self, raw_data: TableData, *, index: Sequence[str] = ()
-    ) -> pl.DataFrame:
+    def shape_raw_data(self, raw_data: TableData, index: Sequence[str] = ()) -> pl.DataFrame:
         """
         Build Polars output directly, retaining historical keys as ordinary columns.
         """
