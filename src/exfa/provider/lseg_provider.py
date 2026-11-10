@@ -11,10 +11,10 @@ from enum import StrEnum
 from typing import Any, Self, cast, overload
 
 import lseg.data as ld
-import pandas as pd
 from lseg.data.content import fundamental_and_reference, historical_pricing
 from lseg.data.errors import EndpointError
 from lseg.data.session import Session
+lazy import pandas as pd
 
 from .adapters import Adapter, PandasAdapter
 
@@ -333,6 +333,7 @@ def parse_raw_table(raw_data: object) -> dict[str, list[object]]:
 
     if not isinstance(raw_data, Mapping):
         raise LsegSchemaError("Expected an LSEG JSON object with headers and data")
+    raw_data = cast(Mapping[object, object], raw_data)
     error = raw_data.get("error")
     if error:
         raise EndpointError(message=f"LSEG returned an error: {error}")
@@ -348,6 +349,7 @@ def parse_raw_table(raw_data: object) -> dict[str, list[object]]:
     for header in headers:
         if not isinstance(header, Mapping):
             raise LsegSchemaError("LSEG headers must be JSON objects")
+        header = cast(Mapping[object, object], header)
         name = header.get("title") or header.get("displayName") or header.get("name")
         if not isinstance(name, str) or not name:
             raise LsegSchemaError("LSEG headers must identify each column")
@@ -447,8 +449,13 @@ def normalize_prices(
             table["date"] = table.pop("date_time")
         if not isinstance(payload, Mapping):
             raise LsegSchemaError("Pricing response must identify its instrument")
+        payload = cast(Mapping[object, object], payload)
         universe = payload.get("universe")
-        asset = universe.get("ric") if isinstance(universe, Mapping) else universe
+        asset = (
+            cast(Mapping[object, object], universe).get("ric")
+            if isinstance(universe, Mapping)
+            else universe
+        )
         if not isinstance(asset, str):
             asset = assets[0] if len(assets) == 1 else None
         if "asset" not in table:

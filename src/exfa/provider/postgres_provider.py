@@ -1,11 +1,9 @@
-from typing import TYPE_CHECKING, cast, overload
+from typing import cast, overload
 
 import psycopg
+lazy import pandas as pd
 
 from .adapters import Adapter, PandasAdapter
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 class PostgresProvider[T = pd.DataFrame]:
