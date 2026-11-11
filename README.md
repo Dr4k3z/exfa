@@ -31,11 +31,14 @@
 ## LSEG ingestion
 
 `LsegDataProvider` is an extraction client for scheduled ingestion jobs. It
-opens one LSEG session for the duration of its context. Historical methods
-return sorted pandas dataframes with a unique `(date, asset)` MultiIndex.
+opens one LSEG session for the duration of its context. Choose an output adapter
+when constructing it. The default `PandasAdapter` preserves historical output as
+sorted pandas dataframes with a unique `(date, asset)` MultiIndex. A
+`PolarsAdapter` produces Polars dataframes with explicit `date` and `asset`
+columns. Every data-fetching method uses the same selected adapter.
 
 ```python
-from datetime import date
+from datetime import date as Date
 
 from exfa import LsegDataProvider, PriceField
 
@@ -43,8 +46,8 @@ from exfa import LsegDataProvider, PriceField
 with LsegDataProvider() as lseg:
     prices = lseg.get_prices(
         assets=[".STOXX50E", "ENI.MI"],
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 12, 31),
+        start_date=Date(2024, 1, 1),
+        end_date=Date(2024, 12, 31),
         fields=[PriceField.CLOSE, PriceField.VOLUME],
     )
 
@@ -52,8 +55,8 @@ with LsegDataProvider() as lseg:
         assets=[".STOXX50E", "ENI.MI"],
         field="TR.CompanyMarketCap",
         name="market_cap",
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 12, 31),
+        start_date=Date(2024, 1, 1),
+        end_date=Date(2024, 12, 31),
     )
 
 panel = prices.join(market_cap, how="left")
@@ -65,6 +68,71 @@ By default, session configuration is read from `LSEG_APP_KEY`,
 when a job should not depend on environment variables. The lower-level
 `get_data()` method is available for LSEG fields not covered by a convenience
 method.
+
+### Choose an output adapter
+
+```python
+from datetime import date as Date
+from exfa import LsegDataProvider, PandasAdapter, PolarsAdapter
+
+with LsegDataProvider(adapter=PolarsAdapter()) as lseg:
+    classifications = lseg.get_trbc(["ENI.MI", "VOD.L"])
+    prices = lseg.get_prices(
+        ["ENI.MI", "VOD.L"], Date(2024, 1, 1), Date(2024, 12, 31),
+    )
+    market_cap = lseg.get_market_cap(
+        ["ENI.MI", "VOD.L"], Date(2024, 1, 1), Date(2024, 12, 31),
+    )
+
+panel = prices.join(market_cap, on=["date", "asset"], how="left", validate="1:1")
+panel.write_parquet("prices.parquet")
+
+# Explicit pandas selection is equivalent to the default:
+pandas_provider = LsegDataProvider(adapter=PandasAdapter())
+```
+
+The provider uses the SDK content APIs and their decoded JSON
+`response.data.raw`, rather than `ld.get_data()` or `response.data.df`.
+It validates LSEG headers and rows, normalizes field names and historical keys,
+and outer-joins independently observed fields using ordinary Python values.
+Only then does the adapter build its dataframe. The Polars path never converts
+through pandas; the LSEG SDK itself still depends on pandas.
+
+Historical timestamps are normalized to UTC without timezone metadata. Exact
+repeated observations are deduplicated; conflicting `(date, asset)` observations
+and duplicate output names raise `LsegSchemaError`. Rows missing a date or asset,
+and rows with no observed values, are omitted. Invalid JSON table shapes raise
+`LsegSchemaError`; failed or partially errored responses raise `LsegProviderError`
+instead of silently returning partial data. No filling across dates occurs.
+
+`get_data()` now uses `fundamental_and_reference.Definition` and retains the
+response's column titles. It targets the fundamental/reference content API;
+the convenience SDK function's additional mixed pricing/streaming routing is
+not reproduced. Use `get_prices()` for historical pricing. The adapter is a
+keyword-only constructor argument, and its output type propagates through all
+request return annotations, including convenience and combined-field methods.
+
+Custom adapters implement `Adapter[T].shape_raw_data(raw_data, *, index=())`.
+`raw_data` is a column mapping (`TableData` in `exfa.provider.adapters`) of decoded,
+normalized Python values, not a JSON string or an SDK dataframe. For historical
+results, `index` is `("date", "asset")`; reference results use `()`.
+Adapters are called once per public request and may return any type `T`.
+They should preserve column values, row order, and keys. For example:
+
+```python
+from collections.abc import Sequence
+from exfa.provider.adapters import TableData
+
+class RecordsAdapter:
+    def shape_raw_data(
+        self, raw_data: TableData, *, index: Sequence[str] = (),
+    ) -> list[dict[str, object]]:
+        return [dict(zip(raw_data, row, strict=True))
+                for row in zip(*raw_data.values(), strict=True)]
+
+with LsegDataProvider(adapter=RecordsAdapter()) as lseg:
+    rows = lseg.get_trbc(["ENI.MI"])  # list[dict[str, object]]
+```
 
 ## Daily fundamental regression diagnostics
 
