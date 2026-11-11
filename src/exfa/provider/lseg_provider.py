@@ -11,10 +11,10 @@ from enum import StrEnum
 from typing import Any, Self, cast, overload
 
 import lseg.data as ld
-import pandas as pd
 from lseg.data.content import fundamental_and_reference, historical_pricing
 from lseg.data.errors import EndpointError
 from lseg.data.session import Session
+lazy import pandas as pd
 
 from .adapters import Adapter, PandasAdapter
 
@@ -138,14 +138,17 @@ class LsegDataProvider[T = pd.DataFrame]:
             if not separator or not key.strip():
                 raise ValueError("String parameters must contain a key=value pair")
             parameters = {key.strip(): value.strip()}
+
         response = fundamental_and_reference.Definition(
             universe=self.normalize_asset_names(assets),
             fields=[fields] if isinstance(fields, str) else list(fields),
             parameters=parameters,
         ).get_data(session=self.session)
+
         if not response.is_success or response.errors:
             raise EndpointError(message=f"LSEG reference request failed: {response.errors}")
-        return parse_raw_table(response.data.raw)
+
+        return parse_raw_table(cast(Mapping[str, Any], response.data.raw))
 
     def request_timeseries_fields(
         self,
@@ -238,9 +241,12 @@ class LsegDataProvider[T = pd.DataFrame]:
                 end=end_date,
                 fields=[field],
             ).get_data(session=self.session)
+
             if not response.is_success or response.errors:
                 raise EndpointError(message=f"LSEG pricing request failed: {response.errors}")
-            series.append(normalize_prices(response.data.raw, universe, field))
+
+            raw_data = cast(dict[str, Any] | list[dict[str, Any]], response.data.raw)
+            series.append(normalize_prices(raw_data, universe, field))
 
         if not series:
             raise ValueError("At least one price field is required.")
@@ -326,28 +332,22 @@ def normalize_field_name(field: str) -> str:
     return to_snake_case(field.removeprefix("TR."))
 
 
-def parse_raw_table(raw_data: object) -> dict[str, list[object]]:
+def parse_raw_table(raw_data: Mapping[str, Any]) -> dict[str, list[object]]:
     """
     Decode the content API's RDP or UDF headers/data JSON into columns.
     """
 
-    if not isinstance(raw_data, Mapping):
-        raise LsegSchemaError("Expected an LSEG JSON object with headers and data")
-    error = raw_data.get("error")
-    if error:
-        raise EndpointError(message=f"LSEG returned an error: {error}")
     headers = raw_data.get("headers")
     rows = raw_data.get("data")
-    if not isinstance(headers, list) or not isinstance(rows, list):
-        raise LsegSchemaError("LSEG response must contain headers and data lists")
-    # Desktop/UDF responses wrap the single header row in an extra list.
+    if headers is None or rows is None:
+        raise LsegSchemaError("LSEG response must contain headers and data")
+
     if len(headers) == 1 and isinstance(headers[0], list):
         headers = headers[0]
+
     names = []
     date_columns = []
     for header in headers:
-        if not isinstance(header, Mapping):
-            raise LsegSchemaError("LSEG headers must be JSON objects")
         name = header.get("title") or header.get("displayName") or header.get("name")
         if not isinstance(name, str) or not name:
             raise LsegSchemaError("LSEG headers must identify each column")
@@ -355,11 +355,13 @@ def parse_raw_table(raw_data: object) -> dict[str, list[object]]:
         identifier = str(header.get("name") or header.get("field") or name).lower()
         if header.get("type") in {"date", "datetime"} or identifier.endswith(".date"):
             date_columns.append(name)
+
     if len(set(names)) != len(names):
         raise LsegSchemaError("LSEG response contains duplicate column titles")
+
     table: dict[str, list[object]] = {name: [] for name in names}
     for row in rows:
-        if not isinstance(row, list) or len(row) != len(names):
+        if len(row) != len(names):
             raise LsegSchemaError("LSEG data rows must match the header width")
         for name, value in zip(names, row, strict=True):
             table[name].append(parse_date(value) if name in date_columns else value)
@@ -426,7 +428,9 @@ def normalize_reference_timeseries(
 
 
 def normalize_prices(
-    raw_data: object, assets: Sequence[str], field: str
+    raw_data: dict[str, Any] | list[dict[str, Any]],
+    assets: Sequence[str],
+    field: str,
 ) -> dict[str, list[object]]:
     """
     Combine historical pricing payloads into normalized observations for one field.
@@ -445,8 +449,6 @@ def normalize_prices(
             raise LsegSchemaError(f"Pricing response does not contain field {field!r}")
         if "date_time" in table and "date" not in table:
             table["date"] = table.pop("date_time")
-        if not isinstance(payload, Mapping):
-            raise LsegSchemaError("Pricing response must identify its instrument")
         universe = payload.get("universe")
         asset = universe.get("ric") if isinstance(universe, Mapping) else universe
         if not isinstance(asset, str):
@@ -473,6 +475,7 @@ def normalize_timeseries(table: Mapping[str, Sequence[object]]) -> dict[str, lis
 
     if not {"date", "asset"}.issubset(table):
         raise LsegSchemaError("Historical data must contain date and asset columns")
+
     value_columns = [column for column in table if column not in {"date", "asset"}]
     observations: dict[tuple[DateTime, str], tuple[object, ...]] = {}
     for row in zip(*table.values(), strict=True):
@@ -488,6 +491,7 @@ def normalize_timeseries(table: Mapping[str, Sequence[object]]) -> dict[str, lis
         if key in observations and observations[key] != values:
             raise LsegSchemaError("Historical data contains duplicate (date, asset) rows")
         observations[key] = values
+
     result: dict[str, list[object]] = {
         "date": [],
         "asset": [],
