@@ -3,6 +3,8 @@ from typing import cast, overload
 import psycopg
 lazy import pandas as pd
 
+from exfa.utils import log_method
+
 from .adapters import Adapter, PandasAdapter
 
 
@@ -19,6 +21,7 @@ class PostgresProvider[T = pd.DataFrame]:
         self._raw_connection = psycopg.raw_cursor
         self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter)
 
+    @log_method
     def get_equities(self, names: str | list[str] | None = None) -> T:
         """
         docstring
@@ -27,6 +30,7 @@ class PostgresProvider[T = pd.DataFrame]:
         raw_data = {}
         return self._adapter.shape_raw_data(raw_data)
 
+    @log_method
     def get_historical_prices(self, names: str | list[str] | None = None) -> T:
         """
         docstring

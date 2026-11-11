@@ -16,6 +16,8 @@ from lseg.data.errors import EndpointError
 from lseg.data.session import Session
 lazy import pandas as pd
 
+from exfa.utils import log_method
+
 from .adapters import Adapter, PandasAdapter
 
 
@@ -83,15 +85,24 @@ class LsegDataProvider[T = pd.DataFrame]:
         self: LsegDataProvider[pd.DataFrame],
         config: LsegConfig | None = None,
         adapter: None = None,
+        verbose: bool = False,
     ) -> None: ...
 
     @overload
-    def __init__(self, config: LsegConfig | None = None, *, adapter: Adapter[T]) -> None: ...
+    def __init__(
+        self, config: LsegConfig | None = None, *, adapter: Adapter[T], verbose: bool = False
+    ) -> None: ...
 
-    def __init__(self, config: LsegConfig | None = None, adapter: Adapter[T] | None = None) -> None:
+    def __init__(
+        self,
+        config: LsegConfig | None = None,
+        adapter: Adapter[T] | None = None,
+        verbose: bool = False,
+    ) -> None:
         self.config = config or LsegConfig.from_env()
         self._session: Session | None = None
         self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter())
+        self._verbose = verbose
 
     def __enter__(self) -> Self:
         return self.open()
@@ -104,6 +115,9 @@ class LsegDataProvider[T = pd.DataFrame]:
         if self._session is None:
             raise RuntimeError("Use the provider as a context manager or call open().")
         return self._session
+
+    def verbose(self) -> bool:
+        return self._verbose
 
     def open(self) -> Self:
         if self._session is None:
@@ -191,6 +205,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         ]
         return join_timeseries(series)
 
+    @log_method
     def get_trbc(self, assets: str | Sequence[str]) -> T:
         """
         Return static country and TRBC classifications, one row per asset.
@@ -219,6 +234,7 @@ class LsegDataProvider[T = pd.DataFrame]:
             {name: [values[row] for row in positions] for name, values in table.items()}
         )
 
+    @log_method
     def get_prices(
         self,
         assets: str | Sequence[str],
@@ -273,6 +289,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         )
         return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
+    @log_method
     def get_market_cap(
         self,
         assets: str | Sequence[str],
@@ -288,6 +305,7 @@ class LsegDataProvider[T = pd.DataFrame]:
             currency=currency,
         )
 
+    @log_method
     def get_shares_outstanding(
         self, assets: str | Sequence[str], start_date: Date, end_date: Date
     ) -> T:
@@ -298,6 +316,7 @@ class LsegDataProvider[T = pd.DataFrame]:
             end_date,
         )
 
+    @log_method
     def get_value_fundamentals(
         self,
         assets: str | Sequence[str],
@@ -507,7 +526,9 @@ def normalize_timeseries(table: Mapping[str, Sequence[object]]) -> dict[str, lis
     return result
 
 
-def join_timeseries(frames: Sequence[Mapping[str, Sequence[object]]]) -> dict[str, list[object]]:
+def join_timeseries(
+    frames: Sequence[Mapping[str, Sequence[object]]],
+) -> dict[str, list[object]]:
     """
     Outer-join normalized series by date and asset, rejecting overlapping value columns.
     """
