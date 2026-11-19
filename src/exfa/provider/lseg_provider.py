@@ -100,7 +100,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         adapter: Adapter[T] | None = None,
         verbose: bool = False,
     ) -> None:
-        self.config = config if config is not None else LsegConfig()
+        self.config = config if config is not None else LsegConfig.from_env()
         self._session: Session | None = None
         self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter())
         self._verbose = verbose

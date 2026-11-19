@@ -68,6 +68,15 @@ available for LSEG fields outside the convenience methods.
 
 ### Read stored LSEG data from PostgreSQL
 
+Initialize a fresh database with the versioned LSEG schema. Use a PostgreSQL
+role that can create the schema and tables, with the target database selected
+through libpq settings such as `PGDATABASE`.
+
+```sh
+psql -X -v ON_ERROR_STOP=1 -f data/lseg_schema.sql
+```
+
+The schema creates the primary keys used by the ingestion jobs' upserts.
 The ingestion jobs populate `lseg.ref_prices`, `lseg.value_fundamentals`, and
 `lseg.equity_classification`. Set `POSTGRES_DATABASE`, `POSTGRES_USER`, and
 `POSTGRES_PASSWORD` in the environment or the project-root `.env`.
@@ -82,6 +91,13 @@ with PostgresProvider() as postgres:
 
 panel = prices.join(fundamentals, how="left", validate="one_to_one")
 ```
+
+The model example in `main.py` uses the union of dates present in stored
+prices for classified assets as its observed calendar. It selects the longest
+uninterrupted run of sessions with valid prices for a majority of eligible
+assets, preferring the latest run on ties. Assets need complete prices
+throughout that run. The observed calendar cannot detect a session missing
+from the database for every classified asset.
 
 ### Choose an output adapter
 

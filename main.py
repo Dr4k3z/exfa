@@ -12,34 +12,36 @@ from exfa.models.fundamental_model.factors import (
 from exfa.provider import PostgresProvider
 
 
-def read_data_from_postgres(
-    provider: PostgresProvider[pl.DataFrame],
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    keys = ["date", "asset"]
-    prices = provider.get_reference_prices().select(*keys, "vwap", "volume")
-    fundamentals = provider.get_value_fundamentals().select(
-        *keys, "shares_outstanding", "market_cap"
-    )
-    mkt_df = (
-        prices.join(fundamentals, on=keys, how="left", validate="1:1")
-        .with_columns(
-            pl.col("vwap").cast(pl.Float64).alias("price"),
-            pl.col("date").cast(pl.Date),
-        )
-        .drop("vwap")
-    )
-    sm_df = provider.get_equity_classifications().select(
-        "asset",
-        pl.col("country_of_headquarters").alias("country"),
-        pl.col("trbc_economic_sector_name").alias("industry"),
-    )
-    return mkt_df, sm_df
+def read_data_from_postgres(provider: PostgresProvider[pl.DataFrame]) -> pl.DataFrame:
+    query = """
+        SELECT prices.date, prices.asset, prices.vwap::double precision AS price,
+               classifications.country_of_headquarters AS country,
+               classifications.trbc_economic_sector_name AS industry
+        FROM lseg.ref_prices AS prices
+        JOIN lseg.equity_classification AS classifications USING (asset)
+    """
+    return provider.read_query(query)
+
+
+def select_model_sessions(covered_sessions: np.ndarray) -> slice:
+    """
+    Select the longest uninterrupted run of covered sessions, preferring the latest tie.
+    """
+
+    edges = np.diff(covered_sessions.astype(np.int8), prepend=0, append=0)
+    starts = np.flatnonzero(edges == 1)
+    stops = np.flatnonzero(edges == -1)
+    if not len(starts):
+        return slice(0, 0)
+    lengths = stops - starts
+    longest = np.flatnonzero(lengths == lengths.max())[-1]
+    return slice(starts[longest], stops[longest])
 
 
 if __name__ == "__main__":
     with PostgresProvider(adapter=PolarsAdapter()) as provider:
-        mkt_df, sm_df = read_data_from_postgres(provider)
-    mkt_df = mkt_df.join(sm_df.select("asset"), on="asset", how="semi")
+        mkt_df = read_data_from_postgres(provider)
+    sm_df = mkt_df.select("asset", "country", "industry").unique()
 
     factors = [
         MomentumFactor(
@@ -62,11 +64,12 @@ if __name__ == "__main__":
     price_values = prices.drop("asset").to_numpy()
     valid_prices = np.isfinite(price_values) & (price_values > 0)
     eligible_assets = valid_prices.sum(axis=1) >= history + 2
-    # Sparse dates can appear in only a few listings. Use the dates shared by
-    # a majority of assets with enough history for the longest factor window.
-    keep_dates = valid_prices[eligible_assets].sum(axis=0) > eligible_assets.sum() / 2
-    keep_assets = eligible_assets & valid_prices[:, keep_dates].all(axis=1)
-    aligned_prices = price_values[keep_assets][:, keep_dates]
+    # Keep one contiguous run of observed sessions so a coverage gap cannot
+    # turn a multi-session move into a daily return.
+    covered_sessions = valid_prices[eligible_assets].sum(axis=0) > eligible_assets.sum() / 2
+    sessions = select_model_sessions(covered_sessions)
+    keep_assets = eligible_assets & valid_prices[:, sessions].all(axis=1)
+    aligned_prices = price_values[keep_assets, sessions]
     asset_count, date_count = aligned_prices.shape
     if asset_count == 0 or date_count < history + 2:
         raise ValueError(
