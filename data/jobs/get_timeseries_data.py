@@ -1,27 +1,37 @@
+from argparse import ArgumentParser, Namespace
 from datetime import date as Date
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
-from exfa import LsegDataProvider, PriceField
+from exfa import LsegDataProvider, PolarsAdapter, PriceField
+from exfa.provider import PostgresProvider
+from exfa.utils import get_last_business_date, logger
 
-DATA_DIR = Path("data/lseg")
+PARTIAL_OBSERVATION_COLUMNS = (
+    "bid",
+    "ask",
+    "shares_outstanding",
+    "market_cap",
+    "revenue",
+    "book_value",
+    "operating_cash_flow",
+)
 
 
 def get_assets(
     file_path: Path = Path("data/EUROSTOXX.csv"),
 ) -> list[str]:
-    df = pd.read_csv(file_path)
-
-    return df["RIC"].dropna().astype(str).drop_duplicates().tolist()
+    universe = pl.read_csv(file_path, columns=["RIC"], schema_overrides={"RIC": pl.String})
+    return universe["RIC"].drop_nulls().unique(maintain_order=True).to_list()
 
 
 def pull_timeseries_data(
-    lseg: LsegDataProvider,
+    lseg: LsegDataProvider[pl.DataFrame],
     assets: list[str],
     start_date: Date,
     end_date: Date,
-) -> dict[str, pd.DataFrame]:
+) -> dict[str, pl.DataFrame]:
     """
     Pull all currently supported time-series datasets required by
     the risk-factor model.
@@ -40,12 +50,17 @@ def pull_timeseries_data(
             PriceField.VWAP,
             PriceField.VOLUME,
         ],
+        allow_missing_quotes=True,
     )
 
     shares_outstanding = lseg.get_shares_outstanding(
         assets=assets,
         start_date=start_date,
         end_date=end_date,
+    )
+
+    shares_outstanding = shares_outstanding.with_columns(
+        pl.col("shares_outstanding").cast(pl.Int64)
     )
 
     value_fundamentals = lseg.get_value_fundamentals(
@@ -56,60 +71,73 @@ def pull_timeseries_data(
     )
 
     return {
-        "market_data": market_data,
-        "shares_outstanding": shares_outstanding,
-        "value_fundamentals": value_fundamentals,
+        "ref_prices": market_data,
+        "value_fundamentals": shares_outstanding.join(
+            value_fundamentals, on=["date", "asset"], how="full", coalesce=True, validate="1:1"
+        ),
     }
 
 
-def build_equity_panel(
-    datasets: dict[str, pd.DataFrame],
-) -> pd.DataFrame:
-    market_data = datasets["market_data"]
-    shares = datasets["shares_outstanding"]
-    fundamentals = datasets["value_fundamentals"]
-
-    return market_data.join(shares, how="left", validate="one_to_one").join(
-        fundamentals, how="left", validate="one_to_one"
-    )
-
-
-def save_datasets(
-    datasets: dict[str, pd.DataFrame],
-    output_dir: Path = DATA_DIR,
-) -> None:
+def save_datasets(datasets: dict[str, pl.DataFrame]) -> None:
     """
-    Persist individual normalized datasets as parquet.
+    Write each historical dataset to PostgreSQL using its date and asset keys.
     """
 
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=True,
+    failures = []
+    with PostgresProvider(adapter=PolarsAdapter(), verbose=True) as postgres:
+        for table, dataset in datasets.items():
+            records = dataset.with_columns(pl.col("date").cast(pl.Date))
+            result = postgres.insert_dataframe_into_table(
+                "lseg",
+                table=table,
+                df=records,
+                conflict_columns=("date", "asset"),
+                preserve_null_columns=PARTIAL_OBSERVATION_COLUMNS,
+            )
+            logger.info(f"Saved {result.inserted:,} rows to lseg.{table}")
+            if result.rejected_rows:
+                failures.append(
+                    f"lseg.{table}: {len(result.rejected_rows):,} rejected rows "
+                    f"(first five: {result.rejected_rows[:5]})"
+                )
+
+    if failures:
+        raise RuntimeError("\n".join(failures))
+
+
+def parse_args() -> Namespace:
+    arg_parser = ArgumentParser()
+
+    last_business_date = get_last_business_date()
+    arg_parser.add_argument(
+        "--start-date",
+        default=last_business_date,
+        type=Date.fromisoformat,
     )
-
-    for name, df in datasets.items():
-        path = output_dir / f"{name}.parquet"
-
-        df.to_parquet(
-            path,
-            index=True,
-        )
-
-        print(f"Saved {name}: {len(df):,} rows -> {path}")
-
-
-def main(
-    assets: list[str],
-    start_date: Date,
-    end_date: Date,
-) -> None:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+    arg_parser.add_argument(
+        "--end-date",
+        default=last_business_date,
+        type=Date.fromisoformat,
     )
+    arg_parser.add_argument("--assets", default=None, type=str)
+    args = arg_parser.parse_args()
+    if args.start_date > args.end_date:
+        arg_parser.error("--start-date must be on or before --end-date")
+    return args
 
-    with LsegDataProvider() as lseg:
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    start_date = args.start_date
+    end_date = args.end_date
+
+    if args.assets is not None:
+        assets = args.assets.split(",")
+    else:
+        assets = get_assets()
+
+    with LsegDataProvider(adapter=PolarsAdapter(), verbose=True) as lseg:
         datasets = pull_timeseries_data(
             lseg=lseg,
             assets=assets,
@@ -118,27 +146,3 @@ def main(
         )
 
     save_datasets(datasets)
-
-    panel = build_equity_panel(datasets)
-
-    panel_path = DATA_DIR / "equity_panel.parquet"
-
-    panel.to_parquet(
-        panel_path,
-        index=True,
-    )
-
-    print(f"Saved equity panel: {len(panel):,} rows -> {panel_path}")
-
-
-if __name__ == "__main__":
-    assets = get_assets()
-
-    start_date = Date(2022, 1, 1)
-    end_date = Date(2026, 7, 31)
-
-    main(
-        assets=assets,
-        start_date=start_date,
-        end_date=end_date,
-    )

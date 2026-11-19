@@ -1,9 +1,7 @@
-from pathlib import Path
-
 import numpy as np
-import pandas as pd
+import polars as pl
 
-from exfa import FundamentalFactorModel
+from exfa import FundamentalFactorModel, PolarsAdapter
 from exfa.diagnostics import RiskFactorDiagnostics
 from exfa.models.fundamental_model.factors import (
     CountryFactor,
@@ -11,39 +9,39 @@ from exfa.models.fundamental_model.factors import (
     MomentumFactor,
     SectorFactor,
 )
+from exfa.provider import PostgresProvider
 
 
-def read_data_from_parquet(
-    market_data_path: Path = Path("data/lseg/equity_panel.parquet"),
-    sm_data_path: Path = Path("data/lseg/equity_classification.parquet"),
-) -> tuple[pd.DataFrame, ...]:
-    mkt_df = pd.read_parquet(market_data_path)[
-        [
-            "vwap",
-            "volume",
-            "shares_outstanding",
-            "market_cap",
-        ]
-    ].rename(columns={"vwap": "price"})
+def read_data_from_postgres(provider: PostgresProvider[pl.DataFrame]) -> pl.DataFrame:
+    query = """
+        SELECT prices.date, prices.asset, prices.vwap::double precision AS price,
+               classifications.country_of_headquarters AS country,
+               classifications.trbc_economic_sector_name AS industry
+        FROM lseg.ref_prices AS prices
+        JOIN lseg.equity_classification AS classifications USING (asset)
+    """
+    return provider.read_query(query)
 
-    mkt_df = mkt_df.reset_index()
-    mkt_df["date"] = pd.to_datetime(mkt_df["date"]).dt.date
 
-    sm_df = pd.read_parquet(sm_data_path)[
-        ["asset", "country_of_headquarters", "trbc_economic_sector_name"]
-    ].rename(
-        columns={"country_of_headquarters": "country", "trbc_economic_sector_name": "industry"}
-    )
+def select_model_sessions(covered_sessions: np.ndarray) -> slice:
+    """
+    Select the longest uninterrupted run of covered sessions, preferring the latest tie.
+    """
 
-    return (mkt_df, sm_df)
+    edges = np.diff(covered_sessions.astype(np.int8), prepend=0, append=0)
+    starts = np.flatnonzero(edges == 1)
+    stops = np.flatnonzero(edges == -1)
+    if not len(starts):
+        return slice(0, 0)
+    lengths = stops - starts
+    longest = np.flatnonzero(lengths == lengths.max())[-1]
+    return slice(starts[longest], stops[longest])
 
 
 if __name__ == "__main__":
-    mkt_df, sm_df = read_data_from_parquet()
-    mkt_df = mkt_df.merge(sm_df, left_on="asset", right_on="asset")
-    mkt_df = mkt_df.set_index(["date", "asset"]).sort_index()
-
-    returns = mkt_df["price"].groupby(level="asset").transform(lambda x: np.log(x).diff())
+    with PostgresProvider(adapter=PolarsAdapter()) as provider:
+        mkt_df = read_data_from_postgres(provider)
+    sm_df = mkt_df.select("asset", "country", "industry").unique()
 
     factors = [
         MomentumFactor(
@@ -59,24 +57,38 @@ if __name__ == "__main__":
         SectorFactor(sector_col="industry"),
         InterceptFactor(),
     ]
-    # Align once at the data boundary; keep leading prices for rolling factors.
-    prices = mkt_df["price"].unstack("date").sort_index().sort_index(axis=1)
-    assets, dates = prices.index, prices.columns
-    price_values = prices.to_numpy()
-    keep_assets = np.isfinite(price_values).all(axis=1) & (price_values > 0).all(axis=1)
-    market_data = {
-        column: mkt_df[column]
-        .unstack("date")
-        .reindex(index=assets, columns=dates)
-        .to_numpy()[keep_assets]
-        for column in ("price", "country", "industry")
-    }
     history = max(factor.window for factor in factors if isinstance(factor, MomentumFactor))
-    returns_array = (
-        returns.unstack("date")
-        .reindex(index=assets, columns=dates)
-        .to_numpy()[keep_assets, history:]
+    prices = mkt_df.pivot(on="date", index="asset", values="price", sort_columns=True).sort(
+        "asset"
     )
+    price_values = prices.drop("asset").to_numpy()
+    valid_prices = np.isfinite(price_values) & (price_values > 0)
+    eligible_assets = valid_prices.sum(axis=1) >= history + 2
+    # Keep one contiguous run of observed sessions so a coverage gap cannot
+    # turn a multi-session move into a daily return.
+    covered_sessions = valid_prices[eligible_assets].sum(axis=0) > eligible_assets.sum() / 2
+    sessions = select_model_sessions(covered_sessions)
+    keep_assets = eligible_assets & valid_prices[:, sessions].all(axis=1)
+    aligned_prices = price_values[keep_assets, sessions]
+    asset_count, date_count = aligned_prices.shape
+    if asset_count == 0 or date_count < history + 2:
+        raise ValueError(
+            f"The PostgreSQL price history has {asset_count} complete assets across "
+            f"{date_count} shared dates. The model needs at least one asset and "
+            f"{history + 2} shared dates."
+        )
+
+    classifications = (
+        prices.select("asset")
+        .filter(pl.Series(keep_assets))
+        .join(sm_df, on="asset", how="left", validate="1:1", maintain_order="left")
+    )
+    market_data = {"price": aligned_prices}
+    for column in ("country", "industry"):
+        labels = classifications[column].to_numpy()
+        market_data[column] = np.broadcast_to(labels[:, None], aligned_prices.shape)
+    # Each difference is labeled by its ending date, one column after its start.
+    returns_array = np.diff(np.log(market_data["price"]), axis=1)[:, history - 1 :]
     rfm = FundamentalFactorModel(factors).fit(returns_array, market_data)
     rfm_diagnostics = RiskFactorDiagnostics(rfm.covariance, rfm.loadings)
     print(rfm_diagnostics.portfolio_risk(rfm.returns))

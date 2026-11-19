@@ -6,6 +6,7 @@ from .lseg_provider import (
     LsegSchemaError,
     PriceField,
 )
+from .postgres_provider import PostgresConfig, PostgresProvider
 
 __all__ = [
     "Adapter",
@@ -16,4 +17,6 @@ __all__ = [
     "LsegDataProvider",
     "LsegSchemaError",
     "PriceField",
+    "PostgresConfig",
+    "PostgresProvider",
 ]

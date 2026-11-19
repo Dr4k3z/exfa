@@ -1,41 +1,46 @@
 from argparse import ArgumentParser, Namespace
-from datetime import date as Date
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
-from exfa import LsegDataProvider
+from exfa import LsegDataProvider, PolarsAdapter
+from exfa.provider import PostgresProvider
+from exfa.utils.logger import logger
 
 UNIVERSE_PATH = Path("data/EUROSTOXX.csv")
-OUTPUT_PATH = Path("data/lseg/equity_classification.parquet")
 
 
 def get_assets(path: Path = UNIVERSE_PATH) -> list[str]:
-    universe = pd.read_csv(path)
-    return universe["RIC"].dropna().astype(str).drop_duplicates().tolist()
+    universe = pl.read_csv(path, columns=["RIC"], schema_overrides={"RIC": pl.String})
+    return universe["RIC"].drop_nulls().unique(maintain_order=True).to_list()
 
 
 def parse_args() -> Namespace:
     arg_parser = ArgumentParser()
-    arg_parser.add_argument(
-        "--start-date", type=lambda date: Date.fromisoformat(date) if date is not None else None
-    )
-    arg_parser.add_argument(
-        "--end-date", type=lambda date: Date.fromisoformat(date) if date is not None else None
-    )
+    arg_parser.add_argument("--assets", default=None, type=str)
     return arg_parser.parse_args()
 
 
-def main() -> None:
-    assets = get_assets()
+def main(assets: list[str] | None = None) -> None:
+    if assets is None:
+        assets = get_assets()
 
-    with LsegDataProvider() as lseg:
+    with LsegDataProvider(adapter=PolarsAdapter(), verbose=True) as lseg:
         classifications = lseg.get_trbc(assets)
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    classifications.to_parquet(OUTPUT_PATH, index=False)
-    print(f"Saved {len(classifications):,} classifications -> {OUTPUT_PATH}")
+    with PostgresProvider(adapter=PolarsAdapter()) as postgres:
+        result = postgres.insert_dataframe_into_table(
+            "lseg",
+            table="equity_classification",
+            df=classifications,
+            conflict_columns="asset",
+        )
+
+    logger.info(f"Saved {result.inserted:,} rows to lseg.equity_classification")
+    if result.rejected_rows:
+        raise RuntimeError(f"Rejected classification rows: {result.rejected_rows[:5]}")
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.assets.split(",") if args.assets is not None else None)
