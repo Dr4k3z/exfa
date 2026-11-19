@@ -1,9 +1,9 @@
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
-from exfa import LsegDataProvider
+from exfa import LsegDataProvider, PolarsAdapter
 from exfa.provider import PostgresProvider
 from exfa.utils.logger import logger
 
@@ -11,8 +11,8 @@ UNIVERSE_PATH = Path("data/EUROSTOXX.csv")
 
 
 def get_assets(path: Path = UNIVERSE_PATH) -> list[str]:
-    universe = pd.read_csv(path)
-    return universe["RIC"].dropna().astype(str).drop_duplicates().tolist()
+    universe = pl.read_csv(path, columns=["RIC"], schema_overrides={"RIC": pl.String})
+    return universe["RIC"].drop_nulls().unique(maintain_order=True).to_list()
 
 
 def parse_args() -> Namespace:
@@ -25,10 +25,10 @@ def main(assets: list[str] | None = None) -> None:
     if assets is None:
         assets = get_assets()
 
-    with LsegDataProvider(verbose=True) as lseg:
+    with LsegDataProvider(adapter=PolarsAdapter(), verbose=True) as lseg:
         classifications = lseg.get_trbc(assets)
 
-    with PostgresProvider() as postgres:
+    with PostgresProvider(adapter=PolarsAdapter()) as postgres:
         result = postgres.insert_dataframe_into_table(
             "lseg",
             table="equity_classification",
