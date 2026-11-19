@@ -4,8 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from exfa import LsegDataProvider, PriceField
-
-DATA_DIR = Path("data/lseg")
+from exfa.provider.postgres_provider import PostgresProvider
 
 
 def get_assets(
@@ -48,6 +47,8 @@ def pull_timeseries_data(
         end_date=end_date,
     )
 
+    shares_outstanding = shares_outstanding.astype({"shares_outstanding": "Int64"})
+
     value_fundamentals = lseg.get_value_fundamentals(
         assets=assets,
         start_date=start_date,
@@ -74,28 +75,30 @@ def build_equity_panel(
     )
 
 
-def save_datasets(
-    datasets: dict[str, pd.DataFrame],
-    output_dir: Path = DATA_DIR,
-) -> None:
+def save_datasets(datasets: dict[str, pd.DataFrame]) -> None:
     """
-    Persist individual normalized datasets as parquet.
+    Write each historical dataset to PostgreSQL using its date and asset keys.
     """
 
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    failures = []
+    with PostgresProvider() as postgres:
+        for table, dataset in datasets.items():
+            records = dataset.reset_index()
+            records["date"] = records["date"].dt.date
+            result = postgres.insert_dataframe_into_table(
+                "lseg",
+                table=table,
+                df=records,
+            )
+            print(f"Saved {result.inserted:,} rows to lseg.{table}")
+            if result.rejected_rows:
+                failures.append(
+                    f"lseg.{table}: {len(result.rejected_rows):,} rejected rows "
+                    f"(first five: {result.rejected_rows[:5]})"
+                )
 
-    for name, df in datasets.items():
-        path = output_dir / f"{name}.parquet"
-
-        df.to_parquet(
-            path,
-            index=True,
-        )
-
-        print(f"Saved {name}: {len(df):,} rows -> {path}")
+    if failures:
+        raise RuntimeError("\n".join(failures))
 
 
 def main(
@@ -103,11 +106,6 @@ def main(
     start_date: Date,
     end_date: Date,
 ) -> None:
-
-    DATA_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
 
     with LsegDataProvider() as lseg:
         datasets = pull_timeseries_data(
@@ -117,18 +115,8 @@ def main(
             end_date=end_date,
         )
 
+    datasets["equity_panel"] = build_equity_panel(datasets)
     save_datasets(datasets)
-
-    panel = build_equity_panel(datasets)
-
-    panel_path = DATA_DIR / "equity_panel.parquet"
-
-    panel.to_parquet(
-        panel_path,
-        index=True,
-    )
-
-    print(f"Saved equity panel: {len(panel):,} rows -> {panel_path}")
 
 
 if __name__ == "__main__":
