@@ -51,23 +51,37 @@ with LsegDataProvider() as lseg:
         fields=[PriceField.CLOSE, PriceField.VOLUME],
     )
 
-    market_cap = lseg.get_timeseries_field(
+    market_cap = lseg.get_market_cap(
         assets=[".STOXX50E", "ENI.MI"],
-        field="TR.CompanyMarketCap",
-        name="market_cap",
         start_date=Date(2024, 1, 1),
         end_date=Date(2024, 12, 31),
     )
 
 panel = prices.join(market_cap, how="left")
-prices.to_parquet("prices.parquet", index=True)
 ```
 
 By default, session configuration is read from `LSEG_APP_KEY`,
 `LSEG_SESSION_NAME`, and `LSEG_CONFIG_NAME`. Pass an `LsegConfig` explicitly
 when a job should not depend on environment variables. The lower-level
-`get_data()` method is available for LSEG fields not covered by a convenience
-method.
+`request_reference_data()` and `request_timeseries_fields()` methods are
+available for LSEG fields outside the convenience methods.
+
+### Read stored LSEG data from PostgreSQL
+
+The ingestion jobs populate `lseg.ref_prices`, `lseg.value_fundamentals`, and
+`lseg.equity_classification`. Set `POSTGRES_DATABASE`, `POSTGRES_USER`, and
+`POSTGRES_PASSWORD` in the environment or the project-root `.env`.
+
+```python
+from exfa import PostgresProvider
+
+with PostgresProvider() as postgres:
+    prices = postgres.get_reference_prices("ENI.MI")
+    fundamentals = postgres.get_value_fundamentals("ENI.MI")
+    classifications = postgres.get_equity_classifications("ENI.MI")
+
+panel = prices.join(fundamentals, how="left", validate="one_to_one")
+```
 
 ### Choose an output adapter
 
@@ -85,7 +99,6 @@ with LsegDataProvider(adapter=PolarsAdapter()) as lseg:
     )
 
 panel = prices.join(market_cap, on=["date", "asset"], how="left", validate="1:1")
-panel.write_parquet("prices.parquet")
 
 # Explicit pandas selection is equivalent to the default:
 pandas_provider = LsegDataProvider(adapter=PandasAdapter())

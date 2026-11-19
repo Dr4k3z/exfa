@@ -1,9 +1,11 @@
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 import pandas as pd
 
 from exfa import LsegDataProvider
-from exfa.provider.postgres_provider import PostgresProvider
+from exfa.provider import PostgresProvider
+from exfa.utils.logger import logger
 
 UNIVERSE_PATH = Path("data/EUROSTOXX.csv")
 
@@ -13,10 +15,17 @@ def get_assets(path: Path = UNIVERSE_PATH) -> list[str]:
     return universe["RIC"].dropna().astype(str).drop_duplicates().tolist()
 
 
-def main() -> None:
-    assets = get_assets()
+def parse_args() -> Namespace:
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument("--assets", default=None, type=str)
+    return arg_parser.parse_args()
 
-    with LsegDataProvider() as lseg:
+
+def main(assets: list[str] | None = None) -> None:
+    if assets is None:
+        assets = get_assets()
+
+    with LsegDataProvider(verbose=True) as lseg:
         classifications = lseg.get_trbc(assets)
 
     with PostgresProvider() as postgres:
@@ -24,12 +33,14 @@ def main() -> None:
             "lseg",
             table="equity_classification",
             df=classifications,
+            conflict_columns="asset",
         )
 
-    print(f"Saved {result.inserted:,} rows to lseg.equity_classification")
+    logger.info(f"Saved {result.inserted:,} rows to lseg.equity_classification")
     if result.rejected_rows:
         raise RuntimeError(f"Rejected classification rows: {result.rejected_rows[:5]}")
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.assets.split(",") if args.assets is not None else None)

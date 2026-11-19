@@ -17,6 +17,7 @@ from lseg.data.session import Session
 lazy import pandas as pd
 
 from exfa.utils import log_method
+from exfa.utils.logger import logger
 
 from .adapters import Adapter, PandasAdapter
 
@@ -82,7 +83,7 @@ class LsegDataProvider[T = pd.DataFrame]:
 
     @overload
     def __init__(
-        self: LsegDataProvider[pd.DataFrame],
+        self,
         config: LsegConfig | None = None,
         adapter: None = None,
         verbose: bool = False,
@@ -99,7 +100,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         adapter: Adapter[T] | None = None,
         verbose: bool = False,
     ) -> None:
-        self.config = config or LsegConfig.from_env()
+        self.config = config if config is not None else LsegConfig()
         self._session: Session | None = None
         self._adapter = adapter if adapter is not None else cast(Adapter[T], PandasAdapter())
         self._verbose = verbose
@@ -116,6 +117,7 @@ class LsegDataProvider[T = pd.DataFrame]:
             raise RuntimeError("Use the provider as a context manager or call open().")
         return self._session
 
+    @property
     def verbose(self) -> bool:
         return self._verbose
 
@@ -135,7 +137,8 @@ class LsegDataProvider[T = pd.DataFrame]:
 
     @staticmethod
     def normalize_asset_names(asset_names: str | Sequence[str]) -> list[str]:
-        return [asset_names] if isinstance(asset_names, str) else list(dict.fromkeys(asset_names))
+        names = [asset_names] if isinstance(asset_names, str) else asset_names
+        return list(dict.fromkeys(name.strip() for name in names))
 
     def request_reference_data(
         self,
@@ -162,7 +165,10 @@ class LsegDataProvider[T = pd.DataFrame]:
         if not response.is_success or response.errors:
             raise EndpointError(message=f"LSEG reference request failed: {response.errors}")
 
-        return parse_raw_table(cast(Mapping[str, Any], response.data.raw))
+        raw_data = cast(Mapping[str, Any], response.data.raw)
+        if error := raw_data.get("error"):
+            raise EndpointError(message=f"LSEG reference request failed: {error}")
+        return parse_raw_table(raw_data)
 
     def request_timeseries_fields(
         self,
@@ -241,6 +247,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         start_date: Date,
         end_date: Date,
         fields: str | Sequence[PriceField | str] = DEFAULT_PRICE_FIELDS,
+        allow_missing_quotes: bool = False,
     ) -> T:
         """
         Return historical pricing indexed by ``(date, asset)``.
@@ -251,43 +258,46 @@ class LsegDataProvider[T = pd.DataFrame]:
 
         series: list[dict[str, list[object]]] = []
         for field in requested:
-            response = historical_pricing.summaries.Definition(
-                universe=universe,
-                start=start_date,
-                end=end_date,
-                fields=[field],
-            ).get_data(session=self.session)
+            remaining = universe
+            while True:
+                response = historical_pricing.summaries.Definition(
+                    universe=remaining,
+                    start=start_date,
+                    end=end_date,
+                    fields=[field],
+                ).get_data(session=self.session)
 
-            if not response.is_success or response.errors:
+                if response.is_success and not response.errors:
+                    raw_data = cast(dict[str, Any] | list[dict[str, Any]], response.data.raw)
+                    series.append(normalize_prices(raw_data, remaining, field))
+                    break
+
+                unsupported = set()
+                if allow_missing_quotes and field in (PriceField.BID, PriceField.ASK):
+                    for error in response.errors or ():
+                        if getattr(error, "code", None) != "TSCC.QS.UserRequestError.90006":
+                            break
+                        match = re.search(
+                            r"Requested ric: (\S+)\. Requested fields:",
+                            getattr(error, "message", ""),
+                        )
+                        if match is None or match[1] not in remaining:
+                            break
+                        unsupported.add(match[1])
+                    else:
+                        if unsupported:
+                            logger.warning(f"LSEG {field} unavailable for {sorted(unsupported)}")
+                            remaining = [ric for ric in remaining if ric not in unsupported]
+                            if remaining:
+                                continue
+                            series.append({"date": [], "asset": [], str(field).lower(): []})
+                            break
+
                 raise EndpointError(message=f"LSEG pricing request failed: {response.errors}")
-
-            raw_data = cast(dict[str, Any] | list[dict[str, Any]], response.data.raw)
-            series.append(normalize_prices(raw_data, universe, field))
 
         if not series:
             raise ValueError("At least one price field is required.")
         return self._adapter.shape_raw_data(join_timeseries(series), index=("date", "asset"))
-
-    def get_timeseries_fields(
-        self,
-        assets: str | Sequence[str],
-        fields: str | Sequence[str] | Mapping[str, str],
-        start_date: Date,
-        end_date: Date,
-        frequency: str = "D",
-        currency: str | None = None,
-    ) -> T:
-        """
-        Fetch one or more reference time series through the selected adapter.
-
-        A mapping supplies field-to-output-column names. Strings and sequences
-        derive output names from the LSEG field identifiers.
-        """
-
-        table = self.request_timeseries_fields(
-            assets, fields, start_date, end_date, frequency=frequency, currency=currency
-        )
-        return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
     @log_method
     def get_market_cap(
@@ -297,24 +307,19 @@ class LsegDataProvider[T = pd.DataFrame]:
         end_date: Date,
         currency: str | None = None,
     ) -> T:
-        return self.get_timeseries_fields(
-            assets,
-            {"TR.CompanyMarketCap": "market_cap"},
-            start_date,
-            end_date,
-            currency=currency,
+        table = self.request_timeseries_fields(
+            assets, {"TR.CompanyMarketCap": "market_cap"}, start_date, end_date, "D", currency
         )
+        return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
     @log_method
     def get_shares_outstanding(
         self, assets: str | Sequence[str], start_date: Date, end_date: Date
     ) -> T:
-        return self.get_timeseries_fields(
-            assets,
-            {"TR.SharesOutstanding": "shares_outstanding"},
-            start_date,
-            end_date,
+        table = self.request_timeseries_fields(
+            assets, {"TR.SharesOutstanding": "shares_outstanding"}, start_date, end_date
         )
+        return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
     @log_method
     def get_value_fundamentals(
@@ -324,7 +329,7 @@ class LsegDataProvider[T = pd.DataFrame]:
         end_date: Date,
         currency: str | None = None,
     ) -> T:
-        return self.get_timeseries_fields(
+        table = self.request_timeseries_fields(
             assets,
             {
                 "TR.CompanyMarketCap": "market_cap",
@@ -334,8 +339,10 @@ class LsegDataProvider[T = pd.DataFrame]:
             },
             start_date,
             end_date,
-            currency=currency,
+            "D",
+            currency,
         )
+        return self._adapter.shape_raw_data(table, index=("date", "asset"))
 
 
 def to_snake_case(value: str) -> str:
