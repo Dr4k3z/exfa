@@ -222,4 +222,6 @@ __marimo__/
 # custom - never push notebooks
 data/lseg/
 *.ipynb
-test/
+/test/*
+test/test_postgres_provider.py
+test/test_lseg_adapters.py
