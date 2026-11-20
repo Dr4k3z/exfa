@@ -2,6 +2,7 @@ import numpy as np
 import polars as pl
 
 from exfa import FundamentalFactorModel, PolarsAdapter
+from exfa.config import tables_registry
 from exfa.diagnostics import RiskFactorDiagnostics
 from exfa.models.fundamental_model.factors import (
     CountryFactor,
@@ -17,10 +18,13 @@ def read_data_from_postgres(provider: PostgresProvider[pl.DataFrame]) -> pl.Data
         SELECT prices.date, prices.asset, prices.vwap::double precision AS price,
                classifications.country_of_headquarters AS country,
                classifications.trbc_economic_sector_name AS industry
-        FROM lseg.ref_prices AS prices
-        JOIN lseg.equity_classification AS classifications USING (asset)
+        FROM {} AS prices
+        JOIN {} AS classifications USING (asset)
     """
-    return provider.read_query(query)
+    return provider.read_query(
+        query,
+        tables=(tables_registry.RefPrices_Table, tables_registry.EquityClassification_Table),
+    )
 
 
 def select_model_sessions(covered_sessions: np.ndarray) -> slice:

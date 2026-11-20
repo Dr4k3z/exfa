@@ -16,6 +16,7 @@ from lseg.data.errors import EndpointError
 from lseg.data.session import Session
 lazy import pandas as pd
 
+from exfa.config import normalize_lseg_assets
 from exfa.utils import log_method
 from exfa.utils.logger import logger
 
@@ -137,8 +138,7 @@ class LsegDataProvider[T = pd.DataFrame]:
 
     @staticmethod
     def normalize_asset_names(asset_names: str | Sequence[str]) -> list[str]:
-        names = [asset_names] if isinstance(asset_names, str) else asset_names
-        return list(dict.fromkeys(name.strip() for name in names))
+        return normalize_lseg_assets(asset_names)
 
     def request_reference_data(
         self,
@@ -235,7 +235,9 @@ class LsegDataProvider[T = pd.DataFrame]:
         )
         if "asset" not in table:
             raise LsegSchemaError("Reference data must identify the asset")
-        positions = sorted(range(len(table["asset"])), key=lambda row: str(table["asset"][row]))
+        positions = sorted(
+            range(len(table["asset"])), key=lambda row: str(table["asset"][row])
+        )
         return self._adapter.shape_raw_data(
             {name: [values[row] for row in positions] for name, values in table.items()}
         )
@@ -286,7 +288,9 @@ class LsegDataProvider[T = pd.DataFrame]:
                         unsupported.add(match[1])
                     else:
                         if unsupported:
-                            logger.warning(f"LSEG {field} unavailable for {sorted(unsupported)}")
+                            logger.warning(
+                                f"LSEG {field} unavailable for {sorted(unsupported)}"
+                            )
                             remaining = [ric for ric in remaining if ric not in unsupported]
                             if remaining:
                                 continue
@@ -441,7 +445,9 @@ def normalize_reference_timeseries(
     """
 
     table = rename_columns(table, {}, normalize=True)
-    asset = next((column for column in table if column in {"asset", "instrument", "ric"}), None)
+    asset = next(
+        (column for column in table if column in {"asset", "instrument", "ric"}), None
+    )
     dates = [column for column in table if column == "date" or column.endswith("_date")]
     values = [column for column in table if column != asset and column not in dates]
     if asset is None or len(dates) != 1 or len(values) != 1:

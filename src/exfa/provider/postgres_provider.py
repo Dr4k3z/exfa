@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date as Date
 from itertools import repeat
 from types import TracebackType
-from typing import NamedTuple, Self, cast, overload
+from typing import LiteralString, NamedTuple, Self, cast, overload
 
 import psycopg
 from dotenv import dotenv_values, find_dotenv
@@ -16,6 +16,7 @@ lazy import pandas as pd
 lazy import polars as pl
 lazy import pyarrow as pa
 
+from exfa.config import PostgresTable, normalize_lseg_assets, tables_registry
 from exfa.utils import log_method, logger
 
 from .adapters import Adapter, PandasAdapter
@@ -118,7 +119,7 @@ class PostgresProvider[T = pd.DataFrame]:
             self._connection = None
 
     @staticmethod
-    def _check_table_exists(cur: psycopg.Cursor, schema: str, table: str) -> None:
+    def _check_table_exists(cur: psycopg.Cursor, table: PostgresTable) -> None:
         cur.execute(
             """
             SELECT 1
@@ -127,35 +128,30 @@ class PostgresProvider[T = pd.DataFrame]:
             AND table_name = %s
             AND table_type = 'BASE TABLE'
             """,
-            (schema, table),
+            (table.schema, table.base),
         )
 
         if cur.fetchone() is None:
-            raise ValueError(f"Table {schema}.{table} not found")
+            raise ValueError(f"Table {table.qualified_name} not found")
 
     @staticmethod
     def _check_columns_match(
-        cur: psycopg.Cursor,
-        schema: str,
-        table: str,
-        columns: list[str],
-        *,
-        drop_unknown_columns: bool,
+        cur: psycopg.Cursor, table: PostgresTable, columns: list[str], drop_unknown_columns: bool
     ) -> list[str]:
         cur.execute(
             """
-        SELECT
-            column_name,
-            is_nullable,
-            column_default,
-            is_identity,
-            is_generated,
-            identity_generation
-        FROM information_schema.columns
-        WHERE table_schema = %s
-          AND table_name = %s
-        """,
-            (schema, table),
+            SELECT
+                column_name,
+                is_nullable,
+                column_default,
+                is_identity,
+                is_generated,
+                identity_generation
+            FROM information_schema.columns
+            WHERE table_schema = %s
+            AND table_name = %s
+            """,
+            (table.schema, table.base),
         )
 
         metadata = {
@@ -199,9 +195,7 @@ class PostgresProvider[T = pd.DataFrame]:
     @log_method
     def insert_dataframe_into_table(
         self,
-        schema: str = "public",
-        *,
-        table: str,
+        table: PostgresTable,
         df: pd.DataFrame | pl.DataFrame,
         drop_unknown_columns: bool = True,
         conflict_columns: str | Sequence[str] = (),
@@ -221,9 +215,9 @@ class PostgresProvider[T = pd.DataFrame]:
         )
         conn = self.connection
         with conn.transaction(), conn.cursor() as cur:
-            self._check_table_exists(cur, schema, table)
+            self._check_table_exists(cur, table)
             columns = self._check_columns_match(
-                cur, schema, table, list(df.columns), drop_unknown_columns=drop_unknown_columns
+                cur, table, list(df.columns), drop_unknown_columns=drop_unknown_columns
             )
             missing_keys = set(keys) - set(columns)
             if missing_keys:
@@ -231,7 +225,7 @@ class PostgresProvider[T = pd.DataFrame]:
                     f"Conflict columns must be present in the insert: {sorted(missing_keys)}"
                 )
 
-            target: sql.Composable = sql.Identifier(schema, table)
+            target: sql.Composable = sql.Identifier(table.schema, table.base)
             if keys:
                 target = sql.SQL("{} AS existing_row").format(target)
             if columns:
@@ -283,11 +277,25 @@ class PostgresProvider[T = pd.DataFrame]:
         return InsertResult(inserted, rejected)
 
     def read_query(
-        self, query: QueryNoTemplate, params: Params | None = None, *, index: Sequence[str] = ()
+        self,
+        query: QueryNoTemplate,
+        params: Params | None = None,
+        tables: Sequence[PostgresTable] = (),
+        index: Sequence[str] = (),
     ) -> T:
         """
         Read a row-returning query through PyArrow and the configured dataframe adapter.
+
+        When tables are supplied, fill SQL identifier placeholders in order.
+        Bind values separately through params. Tables use the current connection.
         """
+
+        if tables:
+            if isinstance(query, str):
+                query = sql.SQL(cast(LiteralString, query))
+            if not isinstance(query, sql.SQL):
+                raise TypeError("Table placeholders require a string or psycopg SQL template")
+            query = query.format(*(sql.Identifier(table.schema, table.base) for table in tables))
 
         connection = self.connection
         with connection.transaction(), connection.cursor() as cursor:
@@ -326,21 +334,19 @@ class PostgresProvider[T = pd.DataFrame]:
         Read current equity classifications for the selected assets.
         """
 
-        names = [assets] if isinstance(assets, str) else assets
-        params = {"assets": [name.strip() for name in names] if names is not None else None}
+        params = {"assets": normalize_lseg_assets(assets) if assets is not None else None}
         query = """
             SELECT *
-            FROM lseg.equity_classification
+            FROM {}
             WHERE (%(assets)s::text[] IS NULL OR asset = ANY(%(assets)s))
             ORDER BY asset
         """
-        return self.read_query(query, params)
+        return self.read_query(query, params, tables=(tables_registry.EquityClassification_Table,))
 
     @log_method
     def get_value_fundamentals(
         self,
         assets: str | Sequence[str] | None = None,
-        *,
         start_date: Date | None = None,
         end_date: Date | None = None,
     ) -> T:
@@ -348,21 +354,25 @@ class PostgresProvider[T = pd.DataFrame]:
         Read historical fundamentals, including shares outstanding, for an inclusive date range.
         """
 
-        names = [assets] if isinstance(assets, str) else assets
         params = {
-            "assets": [name.strip() for name in names] if names is not None else None,
+            "assets": normalize_lseg_assets(assets) if assets is not None else None,
             "start_date": start_date,
             "end_date": end_date,
         }
         query = """
             SELECT *
-            FROM lseg.value_fundamentals
+            FROM {}
             WHERE (%(assets)s::text[] IS NULL OR asset = ANY(%(assets)s))
               AND (%(start_date)s::date IS NULL OR date >= %(start_date)s)
               AND (%(end_date)s::date IS NULL OR date <= %(end_date)s)
             ORDER BY date, asset
         """
-        return self.read_query(query, params, index=("date", "asset"))
+        return self.read_query(
+            query,
+            params,
+            tables=(tables_registry.ValueFundamentals_Table,),
+            index=("date", "asset"),
+        )
 
     @log_method
     def get_reference_prices(
@@ -376,18 +386,19 @@ class PostgresProvider[T = pd.DataFrame]:
         Read historical market prices for the selected assets and inclusive date range.
         """
 
-        names = [assets] if isinstance(assets, str) else assets
         params = {
-            "assets": [name.strip() for name in names] if names is not None else None,
+            "assets": normalize_lseg_assets(assets) if assets is not None else None,
             "start_date": start_date,
             "end_date": end_date,
         }
         query = """
             SELECT *
-            FROM lseg.ref_prices
+            FROM {}
             WHERE (%(assets)s::text[] IS NULL OR asset = ANY(%(assets)s))
               AND (%(start_date)s::date IS NULL OR date >= %(start_date)s)
               AND (%(end_date)s::date IS NULL OR date <= %(end_date)s)
             ORDER BY date, asset
         """
-        return self.read_query(query, params, index=("date", "asset"))
+        return self.read_query(
+            query, params, tables=(tables_registry.RefPrices_Table,), index=("date", "asset")
+        )
