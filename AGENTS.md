@@ -54,6 +54,10 @@ data providers, and diagnostic calculations are separate concerns.
 - To handle dates, datetimes and timedeltas always use the native python module `datetime`
   which must always be imported with the following pattern `from datetime import date as Date`,
   same for `DateTime` and `TimeDelta`.
+- Register every PostgreSQL table created by the project in
+  `src/exfa/config/tables_registry.py` and use the registered `PostgresTable`
+  object in provider queries.
+
 
 ## Deployment and commit conventions
 

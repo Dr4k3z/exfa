@@ -5,6 +5,7 @@ from pathlib import Path
 import polars as pl
 
 from exfa import LsegDataProvider, PolarsAdapter, PriceField
+from exfa.config import PostgresTable, normalize_lseg_assets, tables_registry
 from exfa.provider import PostgresProvider
 from exfa.utils import get_last_business_date, logger
 
@@ -23,7 +24,7 @@ def get_assets(
     file_path: Path = Path("data/EUROSTOXX.csv"),
 ) -> list[str]:
     universe = pl.read_csv(file_path, columns=["RIC"], schema_overrides={"RIC": pl.String})
-    return universe["RIC"].drop_nulls().unique(maintain_order=True).to_list()
+    return normalize_lseg_assets(universe["RIC"].drop_nulls().to_list())
 
 
 def pull_timeseries_data(
@@ -31,12 +32,13 @@ def pull_timeseries_data(
     assets: list[str],
     start_date: Date,
     end_date: Date,
-) -> dict[str, pl.DataFrame]:
+) -> dict[PostgresTable, pl.DataFrame]:
     """
     Pull all currently supported time-series datasets required by
     the risk-factor model.
     """
 
+    assets = normalize_lseg_assets(assets)
     market_data = lseg.get_prices(
         assets=assets,
         start_date=start_date,
@@ -71,14 +73,14 @@ def pull_timeseries_data(
     )
 
     return {
-        "ref_prices": market_data,
-        "value_fundamentals": shares_outstanding.join(
+        tables_registry.RefPrices_Table: market_data,
+        tables_registry.ValueFundamentals_Table: shares_outstanding.join(
             value_fundamentals, on=["date", "asset"], how="full", coalesce=True, validate="1:1"
         ),
     }
 
 
-def save_datasets(datasets: dict[str, pl.DataFrame]) -> None:
+def save_datasets(datasets: dict[PostgresTable, pl.DataFrame]) -> None:
     """
     Write each historical dataset to PostgreSQL using its date and asset keys.
     """
@@ -88,16 +90,15 @@ def save_datasets(datasets: dict[str, pl.DataFrame]) -> None:
         for table, dataset in datasets.items():
             records = dataset.with_columns(pl.col("date").cast(pl.Date))
             result = postgres.insert_dataframe_into_table(
-                "lseg",
-                table=table,
+                table,
                 df=records,
                 conflict_columns=("date", "asset"),
                 preserve_null_columns=PARTIAL_OBSERVATION_COLUMNS,
             )
-            logger.info(f"Saved {result.inserted:,} rows to lseg.{table}")
+            logger.info(f"Saved {result.inserted:,} rows to {table.qualified_name}")
             if result.rejected_rows:
                 failures.append(
-                    f"lseg.{table}: {len(result.rejected_rows):,} rejected rows "
+                    f"{table.qualified_name}: {len(result.rejected_rows):,} rejected rows "
                     f"(first five: {result.rejected_rows[:5]})"
                 )
 
