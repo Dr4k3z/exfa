@@ -27,18 +27,20 @@ def read_data_from_postgres(provider: PostgresProvider[pl.DataFrame]) -> pl.Data
     )
 
 
-def select_model_sessions(covered_sessions: np.ndarray) -> slice:
+def select_model_sessions(covered_sessions: np.ndarray, valid_prices: np.ndarray) -> slice:
     """
-    Select the longest uninterrupted run of covered sessions, preferring the latest tie.
+    Select the longest covered run with a complete asset, preferring the latest tie.
     """
 
-    edges = np.diff(covered_sessions.astype(np.int8), prepend=0, append=0)
-    starts = np.flatnonzero(edges == 1)
-    stops = np.flatnonzero(edges == -1)
-    if not len(starts):
+    eligible_sessions = valid_prices & covered_sessions
+    edges = np.diff(eligible_sessions.astype(np.int8), axis=1, prepend=0, append=0)
+    _, starts = np.nonzero(edges == 1)
+    _, stops = np.nonzero(edges == -1)
+    if not starts.size:
         return slice(0, 0)
     lengths = stops - starts
-    longest = np.flatnonzero(lengths == lengths.max())[-1]
+    longest_runs = np.flatnonzero(lengths == lengths.max())
+    longest = longest_runs[starts[longest_runs].argmax()]
     return slice(starts[longest], stops[longest])
 
 
@@ -71,8 +73,10 @@ if __name__ == "__main__":
     # Keep one contiguous run of observed sessions so a coverage gap cannot
     # turn a multi-session move into a daily return.
     covered_sessions = valid_prices[eligible_assets].sum(axis=0) > eligible_assets.sum() / 2
-    sessions = select_model_sessions(covered_sessions)
+    sessions = select_model_sessions(covered_sessions, valid_prices[eligible_assets])
     keep_assets = eligible_assets & valid_prices[:, sessions].all(axis=1)
+    if sessions == slice(0, 0):
+        keep_assets[:] = False
     aligned_prices = price_values[keep_assets, sessions]
     asset_count, date_count = aligned_prices.shape
     if asset_count == 0 or date_count < history + 2:

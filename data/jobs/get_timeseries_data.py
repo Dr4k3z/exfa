@@ -9,9 +9,18 @@ from exfa.config import PostgresTable, normalize_lseg_assets, tables_registry
 from exfa.provider import PostgresProvider
 from exfa.utils import get_last_business_date, logger
 
+PRICE_FIELDS = (
+    PriceField.CLOSE,
+    PriceField.HIGH,
+    PriceField.LOW,
+    PriceField.BID,
+    PriceField.ASK,
+    PriceField.VWAP,
+    PriceField.VOLUME,
+)
+
 PARTIAL_OBSERVATION_COLUMNS = (
-    "bid",
-    "ask",
+    *(field.name.lower() for field in PRICE_FIELDS),
     "shares_outstanding",
     "market_cap",
     "revenue",
@@ -43,15 +52,7 @@ def pull_timeseries_data(
         assets=assets,
         start_date=start_date,
         end_date=end_date,
-        fields=[
-            PriceField.CLOSE,
-            PriceField.HIGH,
-            PriceField.LOW,
-            PriceField.BID,
-            PriceField.ASK,
-            PriceField.VWAP,
-            PriceField.VOLUME,
-        ],
+        fields=PRICE_FIELDS,
         allow_missing_quotes=True,
     )
 

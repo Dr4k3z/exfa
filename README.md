@@ -92,11 +92,17 @@ with PostgresProvider() as postgres:
 panel = prices.join(fundamentals, how="left", validate="one_to_one")
 ```
 
+`read_query()` uses Arrow-compatible result types. Text, dates, booleans,
+integer and floating-point columns keep their types even for empty results.
+For exact PostgreSQL `numeric` values outside Arrow Decimal128 precision,
+cast the result column to `text` in SQL, for example `SELECT amount::text`.
+
 The model example in `main.py` uses the union of dates present in stored
 prices for classified assets as its observed calendar. It selects the longest
 uninterrupted run of sessions with valid prices for a majority of eligible
-assets, preferring the latest run on ties. Assets need complete prices
-throughout that run. The observed calendar cannot detect a session missing
+assets and at least one asset with complete prices throughout the run. If
+two runs have the same length, it selects the latest. It fits only assets
+with complete prices in that run. The observed calendar cannot detect a session missing
 from the database for every classified asset.
 
 ### Choose an output adapter
@@ -131,15 +137,14 @@ Historical timestamps are normalized to UTC without timezone metadata. Exact
 repeated observations are deduplicated; conflicting `(date, asset)` observations
 and duplicate output names raise `LsegSchemaError`. Rows missing a date or asset,
 and rows with no observed values, are omitted. Invalid JSON table shapes raise
-`LsegSchemaError`; failed or partially errored responses raise `LsegProviderError`
-instead of silently returning partial data. No filling across dates occurs.
+`LsegSchemaError`. Failed or partially errored requests raise `EndpointError`
+by default. `get_prices(allow_missing_quotes=True)` can leave unsupported bid
+and ask observations missing. No filling across dates occurs.
 
-`get_data()` now uses `fundamental_and_reference.Definition` and retains the
-response's column titles. It targets the fundamental/reference content API;
-the convenience SDK function's additional mixed pricing/streaming routing is
-not reproduced. Use `get_prices()` for historical pricing. The adapter is a
-keyword-only constructor argument, and its output type propagates through all
-request return annotations, including convenience and combined-field methods.
+Replace calls to `get_data()` with `request_reference_data()` for fundamental
+and reference fields. It returns a raw column mapping keyed by the response's
+column titles. Use `get_prices()` for historical pricing. The adapter's output
+type propagates through the convenience getters.
 
 Custom adapters implement `Adapter[T].shape_raw_data(raw_data, *, index=())`.
 `raw_data` is a column mapping (`TableData` in `exfa.provider.adapters`) of decoded,

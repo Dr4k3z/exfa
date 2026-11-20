@@ -288,6 +288,8 @@ class PostgresProvider[T = pd.DataFrame]:
 
         When tables are supplied, fill SQL identifier placeholders in order.
         Bind values separately through params. Tables use the current connection.
+        Result values must be representable in Arrow. Cast numeric columns that
+        exceed Decimal128 precision to text to preserve their exact values.
         """
 
         if tables:
@@ -324,7 +326,19 @@ class PostgresProvider[T = pd.DataFrame]:
         for column, values in zip(description, columns, strict=True):
             pg_type = connection.adapters.types.get(column.type_code)
             arrow_type = arrow_types.get(pg_type.name) if pg_type is not None else None
-            arrays.append(pa.array(values, type=arrow_type))
+            try:
+                array = pa.array(values, type=arrow_type)
+            except (pa.ArrowException, OverflowError) as exc:
+                raise ValueError(
+                    f"Cannot convert PostgreSQL result column {column.name!r} to Arrow. "
+                    "Cast the column to a supported type, such as text, in the query."
+                ) from exc
+            if pa.types.is_decimal256(array.type):
+                raise ValueError(
+                    f"PostgreSQL result column {column.name!r} exceeds Arrow Decimal128 "
+                    "precision. Cast the column to text in the query to preserve its exact value."
+                )
+            arrays.append(array)
         table = pa.Table.from_arrays(arrays, names=names)
         return self._adapter.shape_arrow_data(table, index=index)
 
