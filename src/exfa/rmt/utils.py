@@ -3,6 +3,14 @@ from scipy.linalg import eigh
 
 
 def top_sample_eigenvalues(R: np.ndarray, k: int) -> np.ndarray:
+    """
+    Compute the k largest eigenvalues of the uncentered second moment R @ R.T / T.
+
+    R has assets along rows and observations along columns. The calculation
+    assumes a known zero mean for covariance estimation. Eigenvalues are
+    returned in descending order.
+    """
+
     n, T = R.shape
 
     if not 1 <= k <= n:
@@ -27,14 +35,16 @@ def top_sample_eigenvalues(R: np.ndarray, k: int) -> np.ndarray:
 
 def sample_eigenvalues(R: np.ndarray) -> np.ndarray:
     """
-    Compute the complete spectrum of the sample covariance matrix.
+    Compute all eigenvalues of the uncentered second moment R @ R.T / T.
 
     R has shape (n, T), with assets along rows and observations
-    along columns. Returns n eigenvalues in descending order.
+    along columns. The calculation assumes a known zero mean for covariance
+    estimation. Returns n eigenvalues in descending order.
 
     When n > T, use the smaller Gram matrix and append the
-    n - T zero eigenvalues of the sample covariance.
+    n - T zero eigenvalues of the second moment matrix.
     """
+
     n, T = R.shape
 
     gram = (R @ R.T if n <= T else R.T @ R) / T

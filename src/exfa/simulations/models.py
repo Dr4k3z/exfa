@@ -28,9 +28,13 @@ class IIDModel:
             raise ValueError("num_assets must be positive")
 
         self._num_assets = num_assets
-        self.distribution = distribution
+        self._distribution = distribution
 
         self._mean, self._covariance = distribution.moments(num_assets)
+
+    @property
+    def distribution(self) -> Distribution:
+        return self._distribution
 
     @property
     def num_assets(self) -> int:
@@ -38,11 +42,11 @@ class IIDModel:
 
     @property
     def mean(self) -> np.ndarray:
-        return self._mean
+        return self._mean.copy()
 
     @property
     def covariance(self) -> np.ndarray:
-        return self._covariance
+        return self._covariance.copy()
 
     def sample(self, T: int, rng: np.random.Generator) -> np.ndarray:
         if T < 1:
@@ -67,53 +71,72 @@ class FactorModel:
         if not np.isfinite(noise_variance) or noise_variance < 0:
             raise ValueError("noise_variance must be nonnegative")
 
-        self.B = B
-        self.sigma2 = noise_variance
+        B.flags.writeable = False
+        self._B = B
+        self._sigma2 = noise_variance
 
-        self.factors_distribution = (
+        self._factors_distribution = (
             factors_distribution
             if factors_distribution is not None
             else GaussianDistribution()
         )
-        self.residuals_distribution = (
+        self._residuals_distribution = (
             residuals_distribution
             if residuals_distribution is not None
             else GaussianDistribution()
         )
 
-        n, m = self.B.shape
+        n, m = self._B.shape
 
         mu_f, Sigma_f = self.factors_distribution.moments(m)
         mu_e, Sigma_e = self.residuals_distribution.moments(n)
 
         sigma = np.sqrt(self.sigma2)
 
-        self._mean = self.B @ mu_f + sigma * mu_e
-        self._covariance = self.B @ Sigma_f @ self.B.T + self.sigma2 * Sigma_e
+        self._mean = self._B @ mu_f + sigma * mu_e
+        self._covariance = self._B @ Sigma_f @ self._B.T + self.sigma2 * Sigma_e
+
+    @property
+    def B(self) -> np.ndarray:
+        loadings = self._B.copy()
+        loadings.flags.writeable = False
+        return loadings
+
+    @property
+    def sigma2(self) -> float:
+        return self._sigma2
+
+    @property
+    def factors_distribution(self) -> Distribution:
+        return self._factors_distribution
+
+    @property
+    def residuals_distribution(self) -> Distribution:
+        return self._residuals_distribution
 
     @property
     def num_assets(self) -> int:
-        return self.B.shape[0]
+        return self._B.shape[0]
 
     @property
     def num_factors(self) -> int:
-        return self.B.shape[1]
+        return self._B.shape[1]
 
     @property
     def mean(self) -> np.ndarray:
-        return self._mean
+        return self._mean.copy()
 
     @property
     def covariance(self) -> np.ndarray:
-        return self._covariance
+        return self._covariance.copy()
 
     def sample(self, T: int, rng: np.random.Generator) -> np.ndarray:
         if T < 1:
             raise ValueError("T must be positive")
 
-        n, m = self.B.shape
+        n, m = self._B.shape
 
         F = self.factors_distribution.sample((m, T), rng)
         E = self.residuals_distribution.sample((n, T), rng)
 
-        return self.B @ F + np.sqrt(self.sigma2) * E
+        return self._B @ F + np.sqrt(self.sigma2) * E

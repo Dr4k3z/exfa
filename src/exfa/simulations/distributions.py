@@ -81,6 +81,7 @@ class Distribution(ABC):
         For a standardized distribution, the resulting
         covariance is exactly covariance.
         """
+
         covariance = self._validate_covariance(covariance)
 
         eigenvalues, U = np.linalg.eigh(covariance)

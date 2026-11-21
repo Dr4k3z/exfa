@@ -55,6 +55,6 @@ class MCEngine:
                 raise ValueError("Inconsistent measurement keys")
 
             for name, value in values.items():
-                results[name].append(np.asarray(value))
+                results[name].append(np.array(value, copy=True))
 
         return {name: np.stack(values, axis=0) for name, values in results.items()}
