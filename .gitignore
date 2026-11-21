@@ -225,3 +225,4 @@ data/lseg/
 /test/*
 test/test_postgres_provider.py
 test/test_lseg_adapters.py
+*.png

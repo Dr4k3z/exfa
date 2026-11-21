@@ -59,6 +59,14 @@ data providers, and diagnostic calculations are separate concerns.
   object in provider queries.
 
 
+## Experiments
+
+- List every experiment in `experiments/README.md` with its purpose, run command,
+  and outputs. When adding or changing an experiment, add or update its README
+  entry as part of the same task.
+- Use `experiments/plotting.py` for the shared LaTeX-style theme and save all
+  experiment figures as local PNG files.
+
 ## Deployment and commit conventions
 
 - When you want to run code, for instance the file `main.py`, do so by using the current `.venv` and calling
