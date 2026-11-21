@@ -136,7 +136,10 @@ class PostgresProvider[T = pd.DataFrame]:
 
     @staticmethod
     def _check_columns_match(
-        cur: psycopg.Cursor, table: PostgresTable, columns: list[str], drop_unknown_columns: bool
+        cur: psycopg.Cursor,
+        table: PostgresTable,
+        columns: list[str],
+        drop_unknown_columns: bool,
     ) -> list[str]:
         cur.execute(
             """
@@ -207,7 +210,11 @@ class PostgresProvider[T = pd.DataFrame]:
 
         inserted = 0
         rejected: list[InsertResult.RejectedRow] = []
-        keys = (conflict_columns,) if isinstance(conflict_columns, str) else tuple(conflict_columns)
+        keys = (
+            (conflict_columns,)
+            if isinstance(conflict_columns, str)
+            else tuple(conflict_columns)
+        )
         preserve_nulls = (
             {preserve_null_columns}
             if isinstance(preserve_null_columns, str)
@@ -260,7 +267,9 @@ class PostgresProvider[T = pd.DataFrame]:
                         )
                     assignments.append(sql.SQL("{} = {}").format(identifier, incoming))
                 if assignments:
-                    query += sql.SQL(" DO UPDATE SET {}").format(sql.SQL(", ").join(assignments))
+                    query += sql.SQL(" DO UPDATE SET {}").format(
+                        sql.SQL(", ").join(assignments)
+                    )
                 else:
                     query += sql.SQL(" DO NOTHING")
 
@@ -297,7 +306,9 @@ class PostgresProvider[T = pd.DataFrame]:
                 query = sql.SQL(cast(LiteralString, query))
             if not isinstance(query, sql.SQL):
                 raise TypeError("Table placeholders require a string or psycopg SQL template")
-            query = query.format(*(sql.Identifier(table.schema, table.base) for table in tables))
+            query = query.format(
+                *(sql.Identifier(table.schema, table.base) for table in tables)
+            )
 
         connection = self.connection
         with connection.transaction(), connection.cursor() as cursor:
@@ -355,7 +366,9 @@ class PostgresProvider[T = pd.DataFrame]:
             WHERE (%(assets)s::text[] IS NULL OR asset = ANY(%(assets)s))
             ORDER BY asset
         """
-        return self.read_query(query, params, tables=(tables_registry.EquityClassification_Table,))
+        return self.read_query(
+            query, params, tables=(tables_registry.EquityClassification_Table,)
+        )
 
     @log_method
     def get_value_fundamentals(

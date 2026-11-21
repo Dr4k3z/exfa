@@ -27,7 +27,8 @@ def get_last_trading_day(cal: str | mcal.MarketCalendar = TradingCalendar.EUREX)
 
 def get_business_days(start_date: Date, end_date: Date) -> list[Date]:
     days = (
-        start_date + TimeDelta(days=offset) for offset in range((end_date - start_date).days + 1)
+        start_date + TimeDelta(days=offset)
+        for offset in range((end_date - start_date).days + 1)
     )
     return [day for day in days if day.weekday() < 5]
 
