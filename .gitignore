@@ -226,3 +226,4 @@ data/lseg/
 test/test_postgres_provider.py
 test/test_lseg_adapters.py
 *.png
+experiments/compare_rfm/*.csv
