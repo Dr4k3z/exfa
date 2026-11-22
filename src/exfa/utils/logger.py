@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable
 from functools import wraps
-from typing import Concatenate, Protocol
+from typing import Protocol, cast
 
 logger = logging.getLogger("exfa")
 logger.setLevel(logging.INFO)
@@ -18,17 +18,15 @@ class SupportsVerbose(Protocol):
     def verbose(self) -> bool: ...
 
 
-def log_method[T: SupportsVerbose, **P, R](
-    method: Callable[Concatenate[T, P], R],
-) -> Callable[Concatenate[T, P], R]:
+def log_method[Method: Callable[..., object]](method: Method) -> Method:
     """
     Log the method name before execution when verbosity is enabled.
     """
 
     @wraps(method)
-    def wrapper(self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
+    def wrapper(self: SupportsVerbose, /, *args: object, **kwargs: object) -> object:
         if self.verbose:
             logger.info("Calling %s", wrapper.__qualname__)
         return method(self, *args, **kwargs)
 
-    return wrapper
+    return cast(Method, wrapper)
